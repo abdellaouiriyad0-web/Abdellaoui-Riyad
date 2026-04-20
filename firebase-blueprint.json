@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user profile information and preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "nameLower": { "type": "string", "description": "Lowercase name for case-insensitive search" },
+        "searchKeywords": { "type": "array", "items": { "type": "string" }, "description": "Prefixes for partial matching" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["farmer", "veterinarian", "engineer", "supplier"] },
+        "bio": { "type": "string" },
+        "specialization": { "type": "string" },
+        "wilaya": { "type": "string" },
+        "commune": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Request": {
+      "title": "Service Request",
+      "description": "A formal service request between a farmer and an expert/supplier",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "providerId": { "type": "string" },
+        "serviceType": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "completed", "cancelled"] },
+        "date": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["requesterId", "providerId", "status"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "voice", "image"] },
+        "mediaUrl": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["senderId", "type", "timestamp"]
+    },
+    "Community": {
+      "title": "Professional Community",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["crop", "livestock", "topic"] },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "CommunityPost": {
+      "title": "Knowledge Sharing Post",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "attachments": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Follow": {
+      "title": "Professional Follow",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "followedAt": { "type": "string" }
+      }
+    },
+    "Call": {
+      "title": "Communication Event",
+      "type": "object",
+      "properties": {
+        "callerId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "status": { "type": "string", "enum": ["calling", "ongoing", "ended", "missed"] },
+        "type": { "type": "string", "enum": ["audio", "video"] },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Memory": {
+      "title": "User Memory",
+      "type": "object",
+      "properties": {
+        "recentSearches": { "type": "array", "items": { "type": "string" } },
+        "visitedProfiles": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "Global user profiles" },
+    "/users/{userId}/memory/history": { "schema": "Memory", "description": "Lightweight user history" },
+    "/users/{userId}/following/{followedId}": { "schema": "Follow", "description": "Users followed by this user" },
+    "/users/{userId}/followers/{followerId}": { "schema": "Follow", "description": "Users following this user" },
+    "/requests/{requestId}": { "schema": "Request", "description": "Service tracking" },
+    "/chats/{chatId}/messages/{messageId}": { "schema": "Message", "description": "Messaging system" },
+    "/communities/{communityId}": { "schema": "Community", "description": "Professional groups" },
+    "/communities/{communityId}/members/{userId}": { "schema": "User", "description": "Community members" },
+    "/communities/{communityId}/posts/{postId}": { "schema": "CommunityPost", "description": "Knowledge sharing" },
+    "/calls/{callId}": { "schema": "Call", "description": "Real-time communication" }
+  }
+}

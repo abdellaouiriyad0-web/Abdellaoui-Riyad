@@ -1,0 +1,6 @@
+{
+  "name": "AGROLIFE",
+  "description": "Algerian professional agricultural services application for farmers, breeders, and specialists. Includes AI-powered agro-veterinary consulting.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": []
+}

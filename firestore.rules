@@ -1,0 +1,181 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email_verified == true && 
+             request.auth.token.email == 'abdellaouiriyad0@gmail.com';
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             (data.email == null || data.email is string) &&
+             data.role in ["farmer", "veterinarian", "engineer", "supplier", "admin"];
+    }
+
+    function isValidBooking(data) {
+      return isValidId(data.expertId) &&
+             isValidId(data.userId) &&
+             data.userId == request.auth.uid &&
+             data.date is string && data.date.size() <= 100 &&
+             data.status in ['pending', 'confirmed', 'cancelled', 'completed'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidMessage(data) {
+      return data.senderId == request.auth.uid &&
+             data.type in ["text", "voice", "image"] &&
+             (data.text == null || (data.text is string && data.text.size() <= 5000));
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+      
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isOwner(userId) && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'photoURL', 'bio', 'specialization', 'wilaya', 'commune', 
+            'phone', 'lastSeen', 'nameLower', 'searchKeywords', 'professionalStatus',
+            'followingCount', 'followersCount', 'fcmToken'
+          ]) && 
+          incoming().uid == existing().uid
+        )) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']))
+      );
+      
+      match /memory/history {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /following/{followedId} {
+        allow get, list: if isSignedIn();
+        allow write: if isOwner(userId);
+      }
+      match /followers/{followerId} {
+        allow get, list: if isSignedIn();
+        allow write: if isOwner(followerId) || isOwner(userId);
+      }
+    }
+
+    // --- Communities ---
+    match /communities/{communityId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.creatorId == request.auth.uid ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['memberCount'])
+      );
+
+      match /members/{userId} {
+        allow get, list: if isSignedIn();
+        allow write: if isOwner(userId);
+      }
+      
+      match /posts/{postId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          isAdmin() || 
+          resource.data.authorId == request.auth.uid ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'commentsCount'])
+        );
+        allow delete: if isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid);
+        
+        match /likes/{userId} {
+          allow get, list: if isSignedIn();
+          allow write: if isOwner(userId);
+        }
+        match /comments/{commentId} {
+          allow get, list: if isSignedIn();
+          allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
+          allow delete: if isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid);
+        }
+      }
+    }
+
+    // --- Bookings ---
+    match /bookings/{bookingId} {
+      allow get, list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.expertId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isValidBooking(incoming());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.expertId == request.auth.uid && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+         incoming().expertId == existing().expertId) ||
+        (resource.data.userId == request.auth.uid && 
+         incoming().status == 'cancelled' && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+         incoming().userId == existing().userId)
+      );
+    }
+
+    // --- Chats ---
+    match /chats/{chatId} {
+      function isChatMember() {
+        return chatId.split('_')[0] == request.auth.uid || 
+               chatId.split('_')[1] == request.auth.uid;
+      }
+      
+      allow read, write: if isSignedIn() && (isAdmin() || isChatMember());
+      
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (isAdmin() || isChatMember());
+        allow create: if isSignedIn() && isChatMember() && isValidMessage(incoming());
+      }
+    }
+
+    // --- Professional Applications ---
+    match /professionalApplications/{appId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Calls ---
+    match /calls/{callId} {
+      allow read: if isSignedIn() && (resource.data.callerId == request.auth.uid || resource.data.receiverId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().callerId == request.auth.uid || isAdmin());
+      allow update, delete: if isSignedIn() && (resource.data.callerId == request.auth.uid || resource.data.receiverId == request.auth.uid || isAdmin());
+    }
+
+    // --- System / Internal ---
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // --- Global Deny (Must be at the bottom) ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
