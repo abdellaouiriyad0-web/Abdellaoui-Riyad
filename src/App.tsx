@@ -234,21 +234,16 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const navigate = useNavigate();
-  const toast = useToast();
-
-  useEffect(() => {
-    getRedirectResult(auth).catch((error) => {
-      console.error("Google redirect error:", error);
-      toast.error("Google login failed: " + error.message);
-    });
-  }, [toast]);
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle();
-    } catch (error: any) {
+      const user = await signInWithGoogle();
+      if (user) {
+        await syncUserProfile(user);
+        onAuth();
+      }
+    } catch (error) {
       console.error("Google login failed", error);
-      toast.error(error.message || "Google login failed");
     }
   };
 

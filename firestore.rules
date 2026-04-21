@@ -32,7 +32,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.uid == request.auth.uid &&
              (data.email == null || data.email is string) &&
-             data.role in ["farmer", "veterinarian", "engineer", "supplier", "admin"];
+             data.role in ["farmer", "veterinarian", "engineer", "supplier", "admin", "trader"];
     }
 
     function isValidBooking(data) {

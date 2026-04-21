@@ -175,14 +175,19 @@ const generateSearchKeywords = (str: string): string[] => {
 export const syncUserProfile = async (user: FirebaseUser, additionalData: Partial<UserProfile> = {}): Promise<UserProfile> => {
   const userRef = doc(db, 'users', user.uid);
   const userSnap = await getDoc(userRef);
+  const existingData = userSnap.exists() ? userSnap.data() as UserProfile : null;
 
-  const name = additionalData.displayName || user.displayName || 'User';
+  const name = additionalData.displayName || user.displayName || existingData?.displayName || 'User';
   const nameLower = name.toLowerCase();
   const searchKeywords = generateSearchKeywords(name);
 
-  // Auto-promote specific emails to admin for convenience
+  // Preserve existing role if it exists, otherwise default to 'farmer'
+  // Auto-promote specific emails to admin
   const ADMIN_EMAILS = ['abdellaouiriyad0@gmail.com'];
-  const assignedRole = (user.email && ADMIN_EMAILS.includes(user.email)) ? 'admin' : (additionalData.role || 'farmer');
+  const isAdminEmail = user.email && ADMIN_EMAILS.includes(user.email);
+  
+  let assignedRole: UserProfile['role'] = existingData?.role || additionalData.role || 'farmer';
+  if (isAdminEmail) assignedRole = 'admin';
 
   if (!userSnap.exists()) {
     const initialProfile: UserProfile = {
@@ -207,16 +212,21 @@ export const syncUserProfile = async (user: FirebaseUser, additionalData: Partia
     return initialProfile;
   }
 
-  // Update logic to ensure search fields stay in sync
-  const updatePayload = { 
+  // Update logic: Only include keys that should actually change or be synced
+  const updatePayload: any = { 
     lastSeen: serverTimestamp(),
     nameLower,
     searchKeywords,
-    role: assignedRole,
     ...additionalData
   };
+  
+  // Only send role if it's different from what's in DB to avoid unnecessary rule triggers
+  if (existingData?.role !== assignedRole) {
+    updatePayload.role = assignedRole;
+  }
+
   await updateDoc(userRef, updatePayload);
-  return { ...(userSnap.data() as UserProfile), ...updatePayload };
+  return { ...existingData, ...updatePayload } as UserProfile;
 };
 
 // Search Implementation
