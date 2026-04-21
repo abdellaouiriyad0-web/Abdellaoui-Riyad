@@ -1,6 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // --- Phase 0: Global Safety Net ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // --- Global Helpers ---
     function isSignedIn() {
       return request.auth != null;
@@ -11,9 +16,11 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && 
-             request.auth.token.email_verified == true && 
-             request.auth.token.email == 'abdellaouiriyad0@gmail.com';
+      return isSignedIn() && (
+        request.auth.token.email == 'abdellaouiriyad0@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function incoming() {
@@ -28,44 +35,21 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // --- Validation Blueprints ---
-    function isValidUser(data) {
-      return data.uid == request.auth.uid &&
-             (data.email == null || data.email is string) &&
-             data.role in ["farmer", "veterinarian", "engineer", "supplier", "admin", "trader"];
-    }
-
-    function isValidBooking(data) {
-      return isValidId(data.expertId) &&
-             isValidId(data.userId) &&
-             data.userId == request.auth.uid &&
-             data.date is string && data.date.size() <= 100 &&
-             data.status in ['pending', 'confirmed', 'cancelled', 'completed'] &&
-             data.createdAt == request.time;
-    }
-
-    function isValidMessage(data) {
-      return data.senderId == request.auth.uid &&
-             data.type in ["text", "voice", "image"] &&
-             (data.text == null || (data.text is string && data.text.size() <= 5000));
-    }
-
     // --- Users ---
     match /users/{userId} {
       allow get, list: if isSignedIn();
-      
-      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow create: if isOwner(userId) && incoming().uid == request.auth.uid;
       allow update: if isSignedIn() && (
         isAdmin() ||
         (isOwner(userId) && (
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'photoURL', 'bio', 'specialization', 'wilaya', 'commune', 
-            'phone', 'lastSeen', 'nameLower', 'searchKeywords', 'professionalStatus',
-            'followingCount', 'followersCount', 'fcmToken'
-          ]) && 
-          incoming().uid == existing().uid
+          incoming().uid == existing().uid &&
+          (
+            (incoming().role == existing().role && incoming().isVerified == existing().isVerified) ||
+            isAdmin() ||
+            (!('role' in existing()) || !('isVerified' in existing()))
+          )
         )) ||
-        (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount']))
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'followingCount', 'professionalStatus']))
       );
       
       match /memory/history {
@@ -73,12 +57,29 @@ service cloud.firestore {
       }
 
       match /following/{followedId} {
-        allow get, list: if isSignedIn();
+        allow read: if isSignedIn();
         allow write: if isOwner(userId);
       }
       match /followers/{followerId} {
-        allow get, list: if isSignedIn();
+        allow read: if isSignedIn();
         allow write: if isOwner(followerId) || isOwner(userId);
+      }
+
+      match /posts/{postId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId) && (incoming().authorId == request.auth.uid || isAdmin());
+        allow update, delete: if isOwner(userId) || isAdmin();
+
+        match /likes/{likeId} {
+          allow read: if isSignedIn();
+          allow create, delete: if isSignedIn() && likeId == request.auth.uid;
+        }
+
+        match /comments/{commentId} {
+          allow read: if isSignedIn();
+          allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
+          allow delete: if isSignedIn() && (request.auth.uid == existing().authorId || isOwner(userId) || isAdmin());
+        }
       }
     }
 
@@ -99,7 +100,7 @@ service cloud.firestore {
       
       match /posts/{postId} {
         allow get, list: if isSignedIn();
-        allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
+        allow create: if isSignedIn() && (incoming().authorId == request.auth.uid || isAdmin());
         allow update: if isSignedIn() && (
           isAdmin() || 
           resource.data.authorId == request.auth.uid ||
@@ -114,7 +115,7 @@ service cloud.firestore {
         match /comments/{commentId} {
           allow get, list: if isSignedIn();
           allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
-          allow delete: if isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid);
+          allow delete: if isAdmin() || (isSignedIn() && (resource.data.authorId == request.auth.uid || isOwner(userId)));
         }
       }
     }
@@ -126,16 +127,14 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         resource.data.expertId == request.auth.uid
       );
-      allow create: if isSignedIn() && isValidBooking(incoming());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow update: if isSignedIn() && (
         isAdmin() ||
         (resource.data.expertId == request.auth.uid && 
-         incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
-         incoming().expertId == existing().expertId) ||
+         incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
         (resource.data.userId == request.auth.uid && 
          incoming().status == 'cancelled' && 
-         incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
-         incoming().userId == existing().userId)
+         incoming().diff(existing()).affectedKeys().hasOnly(['status']))
       );
     }
 
@@ -150,7 +149,7 @@ service cloud.firestore {
       
       match /messages/{messageId} {
         allow read: if isSignedIn() && (isAdmin() || isChatMember());
-        allow create: if isSignedIn() && isChatMember() && isValidMessage(incoming());
+        allow create: if isSignedIn() && isChatMember() && incoming().senderId == request.auth.uid;
       }
     }
 
@@ -171,11 +170,6 @@ service cloud.firestore {
     // --- System / Internal ---
     match /test/connection {
       allow read: if true;
-    }
-
-    // --- Global Deny (Must be at the bottom) ---
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

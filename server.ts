@@ -109,10 +109,23 @@ async function startServer() {
       .replace(/[']/g, " ")
       .trim();
 
-    // Specific mapping for common naming differences
-    if (normalizedWilaya.toLowerCase() === 'alger') {
-      normalizedWilaya = 'Algiers';
-    }
+    // Specific mapping for common naming differences in OpenWeather
+    const wilayaMapping: { [key: string]: string } = {
+      'alger': 'Algiers',
+      'el oued': 'El Oued',
+      'm sila': 'M\'Sila',
+      'bordj bou arreridj': 'Bordj Bou Arreridj',
+      'bouira': 'Bouira',
+      'ain defla': 'Ain Defla',
+      'ain temouchent': 'Ain Temouchent',
+      'el tarf': 'El Tarf',
+      'el bayadh': 'El Bayadh Province',
+      'tissemsilt': 'Tissemsilt Province',
+      'souk ahras': 'Souk Ahras Province',
+      'khenchela': 'Khenchela Province'
+    };
+
+    const searchName = wilayaMapping[normalizedWilaya.toLowerCase()] || normalizedWilaya;
 
     if (!apiKey) {
       // Simulation Fallback for Demo without Key
@@ -130,8 +143,8 @@ async function startServer() {
     }
 
     try {
-      // Searching for wilaya + Algeria
-      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(normalizedWilaya)},DZ&appid=${apiKey}&units=metric`;
+      // Try searching for wilaya + DZ
+      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(searchName)},DZ&appid=${apiKey}&units=metric`;
       const response = await axios.get(url);
       const data = response.data;
 
@@ -143,18 +156,37 @@ async function startServer() {
         wilaya: wilaya,
         timestamp: Date.now()
       });
-    } catch (err) {
-      console.error("Weather Proxy Error:", err);
+    } catch (err: any) {
+      // If direct city fails, try searching with "Province" suffix for certain wilayas
+      if (err.response?.status === 404 && !searchName.includes('Province')) {
+        try {
+          const provinceUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(searchName + ' Province')},DZ&appid=${apiKey}&units=metric`;
+          const response = await axios.get(provinceUrl);
+          const data = response.data;
+          return res.json({
+            temp: Math.round(data.main.temp),
+            humidity: data.main.humidity,
+            windSpeed: data.wind.speed,
+            condition: data.weather[0].main,
+            wilaya: wilaya,
+            timestamp: Date.now()
+          });
+        } catch (innerErr) {
+          // Fall through
+        }
+      }
+
+      console.error(`Weather Proxy Error for ${searchName}:`, err.message || err);
       // Fallback to simulation even on error to keep UI alive
       res.json({
-        temp: 20,
-        humidity: 50,
-        windSpeed: 10,
-        condition: "Clouds",
+        temp: 22,
+        humidity: 45,
+        windSpeed: 12,
+        condition: "Clear",
         wilaya: wilaya,
         timestamp: Date.now(),
         isSimulated: true,
-        error: "Provider failed, showing estimate"
+        error: "Weather provider unavailable, showing estimate"
       });
     }
   });

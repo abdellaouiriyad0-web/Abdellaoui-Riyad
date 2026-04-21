@@ -10,17 +10,11 @@ export interface User {
   email: string;
   phone?: string;
   wilaya?: string;
-  role: 'farmer' | 'veterinarian' | 'engineer' | 'supplier' | 'admin' | 'trader';
+  role: 'farmer' | 'veterinarian' | 'engineer' | 'supplier' | 'admin';
   status: 'active' | 'suspended';
   createdAt: any;
   subscriptionPlan?: 'free' | 'basic' | 'pro' | 'enterprise';
   lastSeen?: any;
-  photoURL?: string | null;
-  isVerified?: boolean;
-  isBlocked?: boolean;
-  photoURL?: string | null;
-  isVerified?: boolean;
-  isBlocked?: boolean;
 }
 
 export interface Specialist extends User {

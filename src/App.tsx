@@ -8,7 +8,7 @@ import {
   CheckCircle, ChevronLeft, MapPin, Activity, Droplets, Wind as WindIcon, Image,
   Navigation, Star, History, Sprout, Footprints, Play, Phone, Video, Users,
   Hash, BookOpen, AlertCircle, X, Check, ArrowRight, Mic, ShieldAlert, ShieldCheck,
-  Eye, Ban, Trash2, MoreVertical, MessageCircle, Share2, Edit3, UserCircle, Settings2
+  Eye, Ban, Trash2, MoreVertical, MessageCircle, Share2, Edit3, UserCircle, Settings2, EyeOff
 } from "lucide-react";
 import { Language, TRANSLATIONS, WILAYAS, CATEGORIES } from "./lib/constants";
 import { GoogleGenAI } from "@google/genai";
@@ -20,10 +20,13 @@ import {
   uploadFile, uploadFileWithProgress, fileToBase64, Community, CommunityPost, CallEvent,
   WeatherData, fetchWeather, Booking, createBooking, updateBookingStatus,
   toggleLikePost, hasLikedPost, addPostComment, CommunityComment,
-  ProfessionalApplication, submitProfessionalApplication, resolveProfessionalApplication
+  ProfessionalApplication, submitProfessionalApplication, resolveProfessionalApplication,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification,
+  addPersonalPost, deletePersonalPost, toggleLikePersonalPost, hasLikedPersonalPost, addPersonalPostComment,
+  getFollowers, getFollowing
 } from "./lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { onSnapshot, doc, collection, query, where, or, orderBy, limit, updateDoc, getDocs, collectionGroup } from "firebase/firestore";
+import { onSnapshot, doc, collection, query, where, or, orderBy, limit, updateDoc, getDocs, collectionGroup, deleteDoc } from "firebase/firestore";
 import { onMessage } from "firebase/messaging";
 import { AgroLogo } from "./components/AgroLogo";
 import { NotificationBell } from "./components/Notifications/NotificationBell";
@@ -50,6 +53,24 @@ interface WeatherDay {
   windDir: string;
   rainProb: number;
   condition: 'sun' | 'rain' | 'cloud' | 'wind';
+}
+
+interface PersonalPost {
+  id: string;
+  authorId: string;
+  content: string;
+  imageUrl?: string;
+  createdAt: any;
+  likesCount: number;
+}
+
+interface PersonalPostComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorPhoto: string;
+  content: string;
+  createdAt: any;
 }
 
 // --- Agricultural & Livestock Data (Algeria Focus) ---
@@ -233,10 +254,15 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [isLogin, setIsLogin] = useState(true);
   const [showVerification, setShowVerification] = useState(false);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [gender, setGender] = useState("");
+  const [wilaya, setWilaya] = useState("");
   const [code, setCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
-<<<<<<< HEAD
 
   const handleGoogleLogin = async () => {
     try {
@@ -250,81 +276,66 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
       toast.error(error?.message?.includes('permission') 
         ? "فشل تسجيل الدخول: عطل في الأذونات" 
         : "خطأ في تسجيل الدخول عبر جوجل");
-=======
+    }
+  };
 
-  useEffect(() => {
-    getRedirectResult(auth).catch((error) => {
-      console.error("Google redirect error:", error);
-      toast.error("Google login failed: " + error.message);
-    });
-  }, [toast]);
-
-  const handleGoogleLogin = async () => {
+  const handleResetPassword = async () => {
+    if (!email) {
+      toast.error("يرجى إدخال البريد الإلكتروني أولاً");
+      return;
+    }
     try {
-      await signInWithGoogle();
+      await sendPasswordResetEmail(auth, email.trim());
+      toast.success("تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني");
     } catch (error: any) {
-      console.error("Google login failed", error);
-      toast.error(error.message || "Google login failed");
->>>>>>> 0450062 (update project)
+      toast.error("فشل إرسال الرابط، تأكد من صحة البريد الإلكتروني");
     }
   };
 
-  const handleAuth = (e: FormEvent) => {
+  const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
-    if (isLogin) {
-      onAuth();
-      navigate("/");
-    } else {
-      fetch("/api/send-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      setShowVerification(true);
+    try {
+      const additionalData = !isLogin ? { 
+        displayName: fullName || username, 
+        wilaya: wilaya, 
+        role: 'farmer' as const 
+      } : {};
+
+      if (isLogin) {
+        const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+        await syncUserProfile(result.user);
+        onAuth();
+      } else {
+        const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await sendEmailVerification(result.user);
+        await syncUserProfile(result.user, additionalData);
+        toast.success("تم إنشاء الحساب! يرجى التحقق من بريدك الإلكتروني لتنشيط الحساب.");
+        onAuth();
+      }
+    } catch (error: any) {
+      console.error("Auth Error:", error);
+      let msg = "حدث خطأ في المصادقة";
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        msg = "الايميل أو كلمة السر خاطئة";
+      } else if (error.code === 'auth/email-already-in-use') {
+        msg = "هذا الحساب موجود مسبقاً، جارٍ تحويلك لتسجيل الدخول";
+        setIsLogin(true);
+      } else if (error.code === 'auth/weak-password') {
+        msg = "كلمة السر ضعيفة جداً (يجب أن تكون 6 أحرف على الأقل)";
+      } else if (error.code === 'auth/invalid-email') {
+        msg = "بريد إلكتروني غير صالح";
+      } else if (error.code === 'auth/operation-not-allowed') {
+        msg = "طريقة تسجيل الدخول هذه غير مفعلة حالياً";
+      } else if (error.code === 'auth/network-request-failed') {
+        msg = "فشل الاتصال بالإنترنت، يرجى المحاولة لاحقاً";
+      } else if (error.code === 'auth/too-many-requests') {
+        msg = "تم حظر المحاولات مؤقتاً بسبب كثرة الطلبات، يرجى الانتظار قليلاً";
+      } else {
+        msg = `خطأ: ${error.code || error.message}`;
+      }
+      toast.error(msg);
     }
   };
-
-  const handleVerify = () => {
-    fetch("/api/verify-code", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code })
-    }).then(res => {
-      if (res.ok) {
-        setShowVerification(false);
-        setIsLogin(true);
-      } else {
-        alert("Invalid code");
-      }
-    });
-  };
-
-  if (showVerification) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-stone-900 font-sans">
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white p-12 rounded-[48px] shadow-2xl max-w-sm w-full text-center relative overflow-hidden border border-stone-100">
-          <div className="w-24 h-24 bg-brand-green/10 border border-brand-green/20 rounded-[32px] flex items-center justify-center mx-auto mb-10 text-brand-green">
-            <Send size={48} />
-          </div>
-          <h2 className="text-3xl font-black mb-4">{t.verify}</h2>
-          <p className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-12">{t.verifyCodeSent}</p>
-          <input 
-            type="text" 
-            placeholder="000000" 
-            className="w-full text-center text-4xl tracking-[0.5em] font-black p-8 bg-stone-50 border-2 border-stone-100 rounded-[32px] mb-12 outline-none focus:border-brand-green transition-all"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-          <button 
-            onClick={handleVerify}
-            className="w-full bg-brand-green text-white font-black py-6 rounded-[32px] shadow-2xl shadow-brand-green/20 hover:bg-brand-green/90 transition-all active:scale-95 text-lg"
-          >
-            {t.verify}
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className={`min-h-screen bg-stone-50 text-stone-900 flex flex-col justify-center p-6 font-sans ${lang === 'ar' ? 'font-arabic' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -348,16 +359,38 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
           {!isLogin && (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <input required placeholder={t.username} className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" />
-                <input required placeholder={t.fullName} className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" />
+                <input 
+                  required 
+                  placeholder={t.username} 
+                  className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+                <input 
+                  required 
+                  placeholder={t.fullName} 
+                  className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" 
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                 <select required className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none appearance-none cursor-pointer">
+                 <select 
+                   required 
+                   className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none appearance-none cursor-pointer"
+                   value={gender}
+                   onChange={(e) => setGender(e.target.value)}
+                 >
                    <option value="">{t.gender}</option>
                    <option value="male">{t.male}</option>
                    <option value="female">{t.female}</option>
                  </select>
-                 <select required className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none appearance-none cursor-pointer">
+                 <select 
+                   required 
+                   className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none appearance-none cursor-pointer"
+                   value={wilaya}
+                   onChange={(e) => setWilaya(e.target.value)}
+                 >
                    <option value="">{t.wilaya}</option>
                    {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
                  </select>
@@ -367,21 +400,37 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
 
           <div className="space-y-4">
             <input 
-              type="text" 
-              placeholder={isLogin ? `${t.phone} / ${t.email}` : t.email} 
+              type="email" 
+              placeholder={t.email} 
               className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <input type="password" placeholder={t.password} className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green" required />
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                placeholder={t.password} 
+                className="p-5 bg-white border-2 border-stone-100 rounded-[24px] w-full text-sm font-bold shadow-sm outline-none focus:border-brand-green pr-14" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-brand-green transition-colors"
+              >
+                {showPassword ? <Eye size={20} /> : <EyeOff size={20} />}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between text-[11px] px-2 uppercase tracking-widest font-black pt-2">
             <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-brand-green hover:underline">
               {isLogin ? t.signup : t.login}
             </button>
-            {isLogin && <button type="button" className="text-stone-400 hover:text-stone-600">{t.forgotPass}</button>}
+            {isLogin && <button type="button" onClick={handleResetPassword} className="text-stone-400 hover:text-stone-600">{t.forgotPass}</button>}
           </div>
 
           <button className="w-full bg-stone-900 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-stone-800 transition-all flex items-center justify-center gap-3 active:scale-95 text-lg mt-8">
@@ -410,6 +459,21 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
             </div>
             {t.googleLogin}
           </button>
+
+          {isLogin && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-8 text-center p-5 bg-orange-50/50 border border-orange-100 rounded-[24px]"
+            >
+              <p className="text-[11px] font-bold text-orange-800 leading-relaxed">
+                {lang === 'ar' 
+                  ? "تنويه: إذا كنت تحاول الدخول بحساب قديم، يرجى الضغط على زر (إنشاء حساب) في الأعلى أولاً، لأننا انتقلنا لنظام أمان حقيقي."
+                  : "Note: If you're trying to log in with an old account, please click (Signup) above first, as we've moved to a real security system."
+                }
+              </p>
+            </motion.div>
+          )}
         </form>
       </motion.div>
     </div>
@@ -585,7 +649,7 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
         <main className="flex-1 p-6 lg:p-12 overflow-y-auto max-w-5xl mx-auto w-full pb-32 lg:pb-12">
           <AnimatePresence mode="wait">
             {view === 'home' && <RenderHome profile={profile} openProfile={openProfile} weather={weather} weatherLoading={weatherLoading} setView={setView} />}
-            {view === 'users' && <RenderUsers openProfile={openProfile} myUid={profile?.uid || ''} />}
+            {view === 'users' && <RenderUsers openProfile={openProfile} myUid={profile?.uid || ''} profile={profile} />}
             {view === 'communities' && <RenderCommunities openProfile={openProfile} userProfile={profile} />}
             {view === 'messages' && profile && <RenderMessages myUid={profile.uid} activeChat={activeChat} setActiveChat={setActiveChat} openProfile={openProfile} />}
             {view === 'requests' && <RenderRequests profile={profile} openProfile={openProfile} />}
@@ -627,7 +691,7 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
 
       {/* Overlays */}
       <AnimatePresence>
-        {selectedUser && profile && <UserProfileModal user={selectedUser} myUid={profile.uid} onClose={() => setSelectedUser(null)} onMessage={() => { setActiveChat(selectedUser); setSelectedUser(null); setView('messages'); }} setActiveCall={setActiveCall} />}
+        {selectedUser && profile && <UserProfileModal user={selectedUser} myUid={profile.uid} profile={profile} onClose={() => setSelectedUser(null)} onMessage={() => { setActiveChat(selectedUser); setSelectedUser(null); setView('messages'); }} setActiveCall={setActiveCall} />}
         {showAI && <AIChat lang={lang} onClose={() => setShowAI(false)} weather={weather} />}
         {callOverlay}
       </AnimatePresence>
@@ -686,7 +750,7 @@ const CallOverlay = ({ call, onEnd }: { call: CallEvent, onEnd: () => void }) =>
   );
 };
 
-const BookingModal = ({ expert, myUid, onClose }: { expert: UserProfile, myUid: string, onClose: () => void }) => {
+const BookingModal = ({ expert, myUid, profile, onClose }: { expert: UserProfile, myUid: string, profile: UserProfile | null, onClose: () => void }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [time, setTime] = useState('09:00');
   const [topic, setTopic] = useState('');
@@ -699,7 +763,9 @@ const BookingModal = ({ expert, myUid, onClose }: { expert: UserProfile, myUid: 
     try {
       await createBooking({
         expertId: expert.uid,
+        expertName: expert.displayName,
         userId: myUid,
+        userName: profile?.displayName || 'مستخدم',
         date,
         timeSlot: time,
         topic,
@@ -759,14 +825,33 @@ const BookingModal = ({ expert, myUid, onClose }: { expert: UserProfile, myUid: 
   );
 };
 
-const UserProfileModal = ({ user, myUid, onClose, onMessage, setActiveCall }: { user: UserProfile, myUid: string, onClose: () => void, onMessage: () => void, setActiveCall: (c: CallEvent) => void }) => {
+const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveCall }: { user: UserProfile, myUid: string, profile: UserProfile | null, onClose: () => void, onMessage: () => void, setActiveCall: (c: CallEvent) => void }) => {
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
+  const [posts, setPosts] = useState<PersonalPost[]>([]);
+  const [tab, setTab] = useState<'content' | 'follow'>('content');
+  const [socialList, setSocialList] = useState<{ type: 'followers' | 'following', users: UserProfile[] } | null>(null);
+  const [liveUser, setLiveUser] = useState<UserProfile>(user);
 
   useEffect(() => {
     if (myUid) isFollowing(myUid, user.uid).then(setFollowing);
   }, [myUid, user.uid]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+      if (doc.exists()) setLiveUser({ ...doc.data(), uid: doc.id } as UserProfile);
+    }, (err) => console.error("Modal Live User Error:", err));
+    return () => unsub();
+  }, [user.uid]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users', user.uid, 'posts'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setPosts(snap.docs.map(d => ({ ...d.data(), id: d.id } as PersonalPost)));
+    }, (err) => console.error("Modal Posts Error:", err));
+    return () => unsub();
+  }, [user.uid]);
 
   const handleFollow = async () => {
     if (!myUid) return;
@@ -777,74 +862,138 @@ const UserProfileModal = ({ user, myUid, onClose, onMessage, setActiveCall }: { 
     setLoading(false);
   };
 
-  const handleCall = async (type: 'audio' | 'video') => {
-    if (!myUid) return;
-    const callId = await initiateCall(myUid, user.uid, type);
-    setActiveCall({ id: callId, callerId: myUid, receiverId: user.uid, status: 'calling', type, createdAt: new Date() } as CallEvent);
+  const showSocial = async (type: 'followers' | 'following') => {
+    const users = type === 'followers' ? await getFollowers(user.uid) : await getFollowing(user.uid);
+    setSocialList({ type, users });
+    setTab('follow');
   };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-stone-900/60 backdrop-blur-md flex items-center justify-center p-6">
-      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white max-w-md w-full rounded-[48px] overflow-hidden shadow-2xl relative">
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white max-w-xl w-full rounded-[48px] overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
         <button onClick={onClose} className="absolute top-6 right-6 p-3 bg-white/20 backdrop-blur-md rounded-2xl text-stone-900 z-10"><LogOut size={20} className="rotate-90" /></button>
-        <div className="h-48 bg-gradient-to-br from-brand-green to-brand-green/70 relative">
-          <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
-             <img src={user.photoURL || `https://picsum.photos/seed/${user.uid}/300`} className="w-32 h-32 rounded-[40px] border-8 border-white shadow-xl object-cover" referrerPolicy="no-referrer" />
-             <div className="absolute bottom-1 right-1 w-6 h-6 bg-green-500 border-4 border-white rounded-full" />
-          </div>
-        </div>
-        <div className="pt-20 pb-10 px-8 text-center space-y-6">
-          <div>
-            <h3 className="text-3xl font-black text-stone-900">{user.displayName}</h3>
-            <div className="flex items-center justify-center gap-2 mt-1">
-               <div className="bg-brand-green/10 px-3 py-1 rounded-full text-[10px] font-black text-brand-green uppercase tracking-widest">{user.role}</div>
-               <span className="text-stone-300">•</span>
-               <span className="text-stone-400 text-xs font-bold uppercase tracking-widest">{user.wilaya || 'ALGERIA'}</span>
+        
+        <div className="overflow-y-auto no-scrollbar">
+          <div className="h-48 bg-gradient-to-br from-brand-green to-brand-green/70 relative">
+            <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
+               <img src={user.photoURL || `https://picsum.photos/seed/${user.uid}/300`} className="w-32 h-32 rounded-[40px] border-8 border-white shadow-xl object-cover" referrerPolicy="no-referrer" />
+               <div className="absolute bottom-1 right-1 w-6 h-6 bg-green-500 border-4 border-white rounded-full" />
             </div>
           </div>
 
-          <div className="flex justify-center gap-8 py-2 border-y border-stone-50">
-             <div className="text-center">
-               <p className="text-lg font-black text-stone-900">{user.followersCount || 0}</p>
-               <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Followers</p>
-             </div>
-             <div className="text-center">
-               <p className="text-lg font-black text-stone-900">{user.followingCount || 0}</p>
-               <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Following</p>
-             </div>
-          </div>
-          
-          <p className="text-sm text-stone-600 font-medium leading-relaxed italic">
-            "{user.bio || 'Professional agricultural expert dedicated to food security and smart farming in Algeria.'}"
-          </p>
+          <div className="pt-20 pb-10 px-8 text-center space-y-6">
+            <div>
+              <h3 className="text-3xl font-black text-stone-900">{liveUser.displayName}</h3>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                 <div className="bg-brand-green/10 px-3 py-1 rounded-full text-[10px] font-black text-brand-green uppercase tracking-widest">{liveUser.role}</div>
+                 <span className="text-stone-300">•</span>
+                 <span className="text-stone-400 text-xs font-bold uppercase tracking-widest">{liveUser.wilaya || 'ALGERIA'}</span>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
-             <button onClick={handleFollow} disabled={loading} className={`py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${following ? 'bg-stone-100 text-stone-600' : 'bg-stone-900 text-white shadow-xl shadow-stone-950/20'}`}>
-                {following ? <Check size={18} /> : <Plus size={18} />}
-                {following ? 'Following' : 'Follow Expert'}
-             </button>
-             <button onClick={() => setShowBooking(true)} className="bg-brand-green text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-brand-green/20 active:scale-95">
-               <Calendar size={18} />
-               حجز استشارة
-             </button>
-          </div>
+            <div className="flex justify-center gap-8 py-2 border-y border-stone-50">
+               <button onClick={() => showSocial('followers')} className="text-center group">
+                 <p className="text-lg font-black text-stone-900 group-hover:text-brand-green transition-colors">{liveUser.followersCount || 0}</p>
+                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Followers</p>
+               </button>
+               <button onClick={() => showSocial('following')} className="text-center group">
+                 <p className="text-lg font-black text-stone-900 group-hover:text-brand-green transition-colors">{liveUser.followingCount || 0}</p>
+                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Following</p>
+               </button>
+            </div>
+            
+            <p className="text-sm text-stone-600 font-medium leading-relaxed italic">
+              "{liveUser.bio || 'Professional agricultural expert dedicated to food security and smart farming in Algeria.'}"
+            </p>
 
-          <div className="space-y-4">
-            <button onClick={onMessage} className="w-full bg-stone-50 text-stone-900 py-4 rounded-[24px] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-stone-100 transition-colors">
-              <MessageSquare size={16} /> مراسلة مهنية
-            </button>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+               <button onClick={handleFollow} disabled={loading} className={`py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${following ? 'bg-stone-100 text-stone-600' : 'bg-stone-900 text-white shadow-xl shadow-stone-950/20'}`}>
+                  {following ? <Check size={18} /> : <Plus size={18} />}
+                  {following ? 'Following' : 'Follow Expert'}
+               </button>
+               <button onClick={() => setShowBooking(true)} className="bg-brand-green text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-brand-green/20 active:scale-95">
+                 <Calendar size={18} />
+                 حجز استشارة
+               </button>
+            </div>
 
-          <AnimatePresence>
-            {showBooking && <BookingModal expert={user} myUid={myUid} onClose={() => setShowBooking(false)} />}
-          </AnimatePresence>
+            <div className="space-y-4">
+              <button onClick={onMessage} className="w-full bg-stone-50 text-stone-900 py-4 rounded-[24px] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-stone-100 transition-colors">
+                <MessageSquare size={16} /> مراسلة مهنية
+              </button>
+            </div>
+
+            {/* Content Tabs */}
+            <div className="space-y-6 pt-6">
+               <div className="flex bg-stone-100 p-1.5 rounded-2xl">
+                  <button 
+                    onClick={() => { setTab('content'); setSocialList(null); }} 
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'content' && !socialList ? 'bg-white text-stone-900 shadow-md' : 'text-stone-400'}`}
+                  >
+                    المنشورات
+                  </button>
+                  {socialList && (
+                    <button className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-stone-900 shadow-md">
+                      {socialList.type === 'followers' ? 'المتابعون' : 'يتابع'}
+                    </button>
+                  )}
+               </div>
+
+               <div className="space-y-6 text-right">
+                  {tab === 'content' && !socialList ? (
+                    <div className="space-y-6">
+                      {posts.length > 0 ? (
+                        posts.map(post => (
+                          <PersonalPostCard 
+                            key={post.id}
+                            post={post}
+                            profile={user}
+                            currentUserId={myUid}
+                            onDelete={(id) => deletePersonalPost(user.uid, id)}
+                          />
+                        ))
+                      ) : (
+                        <div className="text-center py-12 bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                          <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">لا توجد منشورات حتى الآن</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : socialList ? (
+                    <div className="space-y-4">
+                      {socialList.users.length > 0 ? (
+                        socialList.users.map(u => (
+                          <div key={u.uid} className="flex items-center justify-between bg-stone-50 p-4 rounded-2xl">
+                            <div className="flex items-center gap-4">
+                              <img src={u.photoURL || `https://picsum.photos/seed/${u.uid}/100`} className="w-10 h-10 rounded-full object-cover" />
+                              <div className="text-right">
+                                <p className="text-sm font-black text-stone-900">{u.displayName}</p>
+                                <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{u.role}</p>
+                              </div>
+                            </div>
+                            {/* We could add follow buttons here too */}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-12">
+                          <p className="text-stone-400 text-xs font-bold">القائمة فارغة</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+               </div>
+            </div>
+
+            <AnimatePresence>
+              {showBooking && <BookingModal expert={user} myUid={myUid} profile={profile} onClose={() => setShowBooking(false)} />}
+            </AnimatePresence>
+          </div>
         </div>
       </motion.div>
     </motion.div>
   );
 };
 
-const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: React.Dispatch<React.SetStateAction<'home' | 'users' | 'communities' | 'messages' | 'requests' | 'profile' | 'admin'>> }) => {
+const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: (v: string) => void }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const isExpert = profile?.role !== 'farmer' && profile?.role !== 'admin';
   const currentTime = new Date().toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
@@ -940,12 +1089,27 @@ const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: 
             </div>
             <div className="flex-1 space-y-4">
                {bookings.length > 0 ? bookings.map(b => (
-                 <div key={b.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl border border-stone-100">
-                    <div className="flex items-center gap-3">
-                       <Clock size={14} className="text-brand-green" />
-                       <span className="text-xs font-bold text-stone-700">{b.timeSlot}</span>
+                 <div key={b.id} className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                          <Clock size={14} className="text-brand-green" />
+                          <span className="text-xs font-bold text-stone-700">{b.timeSlot}</span>
+                          <span className="text-stone-300 mx-1">|</span>
+                          <Calendar size={12} className="text-stone-400" />
+                          <span className="text-[10px] font-bold text-stone-400">{b.date}</span>
+                       </div>
+                       <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{b.status === 'confirmed' ? 'مؤكد' : 'قيد الانتظار'}</span>
                     </div>
-                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{b.status === 'confirmed' ? 'مؤكد' : 'قيد الانتظار'}</span>
+                    <div className="h-px bg-stone-200/50 w-full" />
+                    <div className="flex flex-col gap-1">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">
+                         {profile?.role === 'farmer' ? "موعد مع الخبير:" : "استشارة لـ:"}
+                       </p>
+                       <p className="text-sm font-black text-stone-900 leading-tight">
+                         {profile?.role === 'farmer' ? (b.expertName || 'خبير AgroLife') : (b.userName || 'فلاح')}
+                       </p>
+                       {b.topic && <p className="text-[10px] font-medium text-stone-500 line-clamp-1 mt-1 italic opacity-80">"{b.topic}"</p>}
+                    </div>
                  </div>
                )) : (
                  <div className="text-center py-6 text-stone-300">
@@ -1032,7 +1196,7 @@ const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: 
   );
 };
 
-const RenderUsers = ({ openProfile, myUid }: { openProfile: (uid: string) => any, myUid: string }) => {
+const RenderUsers = ({ openProfile, myUid, profile }: { openProfile: (uid: string) => any, myUid: string, profile: UserProfile | null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'farmer' | 'veterinarian' | 'engineer' | 'supplier'>('all');
   const [wilayaFilter, setWilayaFilter] = useState('all');
@@ -1165,7 +1329,7 @@ const RenderUsers = ({ openProfile, myUid }: { openProfile: (uid: string) => any
 
       <AnimatePresence>
         {bookingExpert && (
-          <BookingModal expert={bookingExpert} myUid={myUid} onClose={() => setBookingExpert(null)} />
+          <BookingModal expert={bookingExpert} myUid={myUid} profile={profile} onClose={() => setBookingExpert(null)} />
         )}
       </AnimatePresence>
     </motion.div>
@@ -1185,7 +1349,7 @@ const RenderMessages = ({ activeChat, setActiveChat, openProfile, myUid }: { act
     const usersRef = collection(db, 'users');
     getDocs(query(usersRef, limit(5))).then(snap => {
        setChats(snap.docs.map(d => ({ ...d.data(), id: d.id }) as any).filter((u: any) => u.uid !== myUid));
-    });
+    }).catch(err => console.error("Chat User Fetch Error:", err));
   }, [myUid]);
 
   useEffect(() => {
@@ -1381,17 +1545,24 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
     await updateBookingStatus(id, newStatus);
   };
 
+  const statusLabels: Record<string, string> = {
+    'pending': 'قيد الانتظار',
+    'confirmed': 'مؤكدة',
+    'completed': 'مكتملة',
+    'cancelled': 'ملغاة'
+  };
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10 pb-24">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10 pb-24" dir="rtl">
        <header className="space-y-6">
-        <h2 className="text-4xl font-black text-stone-900 tracking-tighter">Consultation Desk</h2>
+        <h2 className="text-4xl font-black text-stone-900 tracking-tighter">مكتب الاستشارات الفنية</h2>
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {['pending', 'confirmed', 'completed', 'cancelled'].map(s => (
             <button 
               key={s} onClick={() => setStatusFilter(s as any)}
               className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${statusFilter === s ? 'bg-stone-900 text-white shadow-xl' : 'bg-white border-2 border-stone-100 text-stone-400 hover:border-stone-200'}`}
             >
-              {s}
+              {statusLabels[s] || s}
             </button>
           ))}
         </div>
@@ -1407,16 +1578,16 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
              <div key={b.id} className="bg-white p-8 rounded-[48px] border border-stone-100 shadow-sm space-y-8 group hover:border-brand-blue/30 transition-all">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-stone-300">
+                    <div className="w-14 h-14 bg-brand-green/10 rounded-2xl flex items-center justify-center text-brand-green">
                       <Calendar size={24} />
                     </div>
                     <div>
-                      <h4 className="font-black text-stone-900 uppercase tracking-tighter">Booking #{b.id.slice(-6)}</h4>
-                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Agricultural Consultation</p>
+                      <h4 className="font-black text-stone-900 uppercase tracking-tighter">طلب استشارة من: {b.userName || 'فلاح'}</h4>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{b.topic || 'موضوع عام'}</p>
                     </div>
                   </div>
                   <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${b.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
-                    {b.status}
+                    {statusLabels[b.status]}
                   </div>
                 </div>
 
@@ -1437,7 +1608,7 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
                        onClick={() => handleUpdateStatus(b.id, 'confirmed')}
                        className="flex-1 bg-brand-green text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-green/20 hover:scale-[1.02] active:scale-95 transition-all"
                      >
-                       Accept Request
+                       قبول الطلب
                      </button>
                    )}
                    {b.status === 'pending' && (
@@ -1445,7 +1616,7 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
                        onClick={() => handleUpdateStatus(b.id, 'cancelled')}
                        className="flex-1 bg-red-50 text-red-500 py-5 rounded-[24px] font-black text-xs uppercase tracking-widest hover:bg-red-100 transition-all"
                      >
-                       {profile?.role === 'farmer' ? 'Cancel Request' : 'Reject'}
+                       {profile?.role === 'farmer' ? 'إلغاء الطلب' : 'رفض'}
                      </button>
                    )}
                    {b.status === 'confirmed' && (
@@ -1453,7 +1624,7 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
                        onClick={() => handleUpdateStatus(b.id, 'completed')}
                        className="flex-1 bg-stone-900 text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest hover:bg-stone-800 transition-all shadow-xl shadow-stone-950/20"
                      >
-                       Mark as Completed
+                       تحديد كمكتملة
                      </button>
                    )}
                 </div>
@@ -1462,7 +1633,7 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
            {bookings.length === 0 && (
               <div className="text-center py-32 bg-stone-50/50 border-2 border-dashed border-stone-100 rounded-[48px] text-stone-300">
                 <Calendar size={64} className="mx-auto mb-4 opacity-10" />
-                <p className="font-black uppercase tracking-widest text-[10px]">No {statusFilter} requests found</p>
+                <p className="font-black uppercase tracking-widest text-[10px]">لا توجد طلبات {statusLabels[statusFilter]} حالياً</p>
               </div>
            )}
         </div>
@@ -1575,7 +1746,7 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
         ...prev,
         [postId]: snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityComment))
       }));
-    });
+    }, (err) => console.error("Community Comments Error:", err));
     return unsub;
   };
 
@@ -1816,6 +1987,191 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
   );
 };
 
+const PersonalPostCard: React.FC<{ 
+  post: PersonalPost; 
+  profile: UserProfile | null; 
+  currentUserId: string; 
+  onDelete: (id: string) => Promise<void> | void; 
+}> = ({ post, profile, currentUserId, onDelete }) => {
+  const [liked, setLiked] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<PersonalPostComment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { state: { userProfile } } = useAppContext();
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!profile || !currentUserId) return;
+    const checkLike = async () => {
+      const isLiked = await hasLikedPersonalPost(profile.uid, post.id, currentUserId);
+      setLiked(isLiked);
+    };
+    checkLike();
+  }, [post.id, profile, currentUserId]);
+
+  useEffect(() => {
+    if (!showComments || !profile) return;
+    const q = query(
+      collection(db, 'users', profile.uid, 'posts', post.id, 'comments'),
+      orderBy('createdAt', 'asc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setComments(snap.docs.map(d => ({ ...d.data(), id: d.id } as PersonalPostComment)));
+    }, (err) => console.error("Personal Post Comments Error:", err));
+    return () => unsub();
+  }, [showComments, post.id, profile]);
+
+  const handleLike = async () => {
+    if (!profile || !currentUserId) return;
+    try {
+      const newStatus = !liked;
+      setLiked(newStatus);
+      await toggleLikePersonalPost(profile.uid, post.id, currentUserId, newStatus);
+    } catch (err) {
+      setLiked(!liked);
+      toast.error("خطأ في التفاعل");
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!profile || !newComment.trim() || !userProfile) return;
+    setIsSubmitting(true);
+    try {
+      await addPersonalPostComment(profile.uid, post.id, {
+        authorId: userProfile.uid,
+        authorName: userProfile.displayName,
+        authorPhoto: userProfile.photoURL,
+        content: newComment
+      });
+      setNewComment("");
+      toast.success("تم إضافة التعليق");
+    } catch (err) {
+      toast.error("فشل في إضافة التعليق");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!profile) return;
+    try {
+      await deleteDoc(doc(db, 'users', profile.uid, 'posts', post.id, 'comments', commentId));
+      toast.success("تم حذف التعليق");
+    } catch (err) {
+      toast.error("فشل حذف التعليق");
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-white p-8 rounded-[48px] border border-stone-100 shadow-sm space-y-6 relative group"
+    >
+      {currentUserId === profile?.uid && (
+        <button 
+          onClick={() => onDelete(post.id)}
+          className="absolute top-8 left-8 p-3 bg-rose-50 text-rose-300 hover:text-rose-500 rounded-2xl transition-all opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 size={18} />
+        </button>
+      )}
+
+      <div className="flex items-center gap-4">
+        <img src={profile?.photoURL || "https://picsum.photos/seed/farmer/100"} className="w-12 h-12 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+        <div>
+          <p className="font-black text-stone-900 text-sm">{profile?.displayName}</p>
+          <p className="text-[10px] font-bold text-stone-300 uppercase tracking-widest">
+            {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleDateString('ar-DZ') : 'الآن'}
+          </p>
+        </div>
+      </div>
+
+      <p className="text-stone-600 leading-relaxed font-medium text-lg whitespace-pre-wrap">{post.content}</p>
+      
+      {post.imageUrl && (
+        <img src={post.imageUrl} className="w-full h-80 object-cover rounded-[32px] shadow-lg" alt="Post content" referrerPolicy="no-referrer" />
+      )}
+
+      <div className="pt-4 flex items-center gap-6 border-t border-stone-50">
+        <button 
+          onClick={handleLike}
+          className={`flex items-center gap-2 transition-colors ${liked ? 'text-rose-500' : 'text-stone-400 hover:text-rose-500'}`}
+        >
+          <Heart size={20} fill={liked ? "currentColor" : "none"} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{post.likesCount || 0}</span>
+        </button>
+        <button 
+          onClick={() => setShowComments(!showComments)}
+          className={`flex items-center gap-2 transition-colors ${showComments ? 'text-brand-blue' : 'text-stone-400 hover:text-brand-blue'}`}
+        >
+          <MessageCircle size={20} />
+          <span className="text-[10px] font-black uppercase tracking-widest">التعليقات</span>
+        </button>
+        <button className="flex items-center gap-2 text-stone-400 hover:text-brand-green transition-colors">
+          <Share2 size={20} />
+          <span className="text-[10px] font-black uppercase tracking-widest">مشاركة</span>
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showComments && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden space-y-6 pt-4"
+          >
+            <div className="space-y-4 max-h-60 overflow-y-auto no-scrollbar pr-2">
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-3 items-start group/comment">
+                  <img src={c.authorPhoto || "https://picsum.photos/seed/user/50"} className="w-8 h-8 rounded-xl object-cover shrink-0" referrerPolicy="no-referrer" />
+                  <div className="flex-1 bg-stone-50 p-4 rounded-2xl rounded-tr-none relative">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">{c.authorName}</p>
+                    <p className="text-sm font-medium text-stone-600">{c.content}</p>
+                    {(currentUserId === c.authorId || currentUserId === profile?.uid) && (
+                      <button 
+                        onClick={() => handleDeleteComment(c.id)}
+                        className="absolute top-2 left-2 p-1 text-stone-200 hover:text-rose-500 opacity-0 group-hover/comment:opacity-100 transition-all"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {comments.length === 0 && (
+                <p className="text-center text-[10px] font-black text-stone-300 uppercase tracking-[0.2em] py-4">كن أول من يعلق</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 items-center pt-2">
+              <img src={userProfile?.photoURL || "https://picsum.photos/seed/me/50"} className="w-10 h-10 rounded-xl object-cover shrink-0" referrerPolicy="no-referrer" />
+              <div className="flex-1 relative">
+                <input 
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+                  placeholder="أضف تعليقاً..."
+                  className="w-full bg-stone-50 p-4 pl-12 rounded-2xl outline-none border border-transparent focus:border-brand-green text-sm font-medium transition-all"
+                />
+                <button 
+                  onClick={handleAddComment}
+                  disabled={!newComment.trim() || isSubmitting}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-brand-green hover:scale-110 disabled:opacity-30 disabled:scale-100 transition-all"
+                >
+                  {isSubmitting ? <div className="w-4 h-4 border-2 border-brand-green/30 border-t-brand-green rounded-full animate-spin" /> : <Send size={20} />}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
 const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onLogout: () => void }) => {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -1824,7 +2180,24 @@ const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onL
     wilaya: profile?.wilaya || '',
     bio: profile?.bio || ''
   });
+  const [posts, setPosts] = useState<PersonalPost[]>([]);
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [newPostContent, setNewPostContent] = useState("");
+  const [postImage, setPostImage] = useState<File | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
   const toast = useToast();
+
+  useEffect(() => {
+    if (!profile) return;
+    const q = query(
+      collection(db, 'users', profile.uid, 'posts'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setPosts(snap.docs.map(d => ({ ...d.data(), id: d.id } as PersonalPost)));
+    }, (err) => console.error("Profile Posts Error:", err));
+    return () => unsub();
+  }, [profile]);
 
   const handleSaveProfile = async () => {
     if (!profile) return;
@@ -1834,6 +2207,41 @@ const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onL
       setIsEditing(false);
     } catch (err) {
       toast.error("فشل في تحديث المعلومات");
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!profile || !newPostContent.trim()) return;
+    setIsPosting(true);
+    try {
+      let imageUrl = "";
+      if (postImage) {
+        const path = `posts/${profile.uid}/${Date.now()}_${postImage.name}`;
+        imageUrl = await uploadFile(postImage, path);
+      }
+      await addPersonalPost(profile.uid, {
+        content: newPostContent,
+        ...(imageUrl && { imageUrl })
+      });
+      setNewPostContent("");
+      setPostImage(null);
+      setShowPostModal(false);
+      toast.success("تم النشر بنجاح على صفحتك");
+    } catch (err) {
+      console.error("Create Post Error:", err);
+      toast.error("فشل في النشر");
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!profile) return;
+    try {
+      await deletePersonalPost(profile.uid, postId);
+      toast.success("تم حذف المنشور");
+    } catch (err) {
+      toast.error("فشل حذف المنشور");
     }
   };
 
@@ -1893,6 +2301,92 @@ const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onL
             )}
           </div>
        </div>
+
+       {/* Posts Section */}
+       <div className="space-y-6">
+          <div className="flex items-center justify-between px-4">
+             <h4 className="text-xs font-black text-stone-400 uppercase tracking-[0.3em]">منشورات الصفحة الشخصية</h4>
+             {profile?.uid === auth.currentUser?.uid && (
+               <button 
+                 onClick={() => setShowPostModal(true)}
+                 className="flex items-center gap-2 bg-stone-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-green transition-all shadow-xl shadow-stone-900/10"
+               >
+                  <Plus size={16} /> نشر جديد
+               </button>
+             )}
+          </div>
+
+          <div className="grid gap-6">
+             {posts.map((post: PersonalPost) => (
+               <PersonalPostCard 
+                 key={post.id}
+                 post={post}
+                 profile={profile}
+                 currentUserId={auth.currentUser?.uid || ""}
+                 onDelete={handleDeletePost}
+               />
+             ))}
+
+             {posts.length === 0 && (
+               <div className="text-center py-20 bg-stone-50/50 rounded-[48px] border-2 border-dashed border-stone-100 text-stone-300">
+                  <Edit3 size={48} className="mx-auto mb-4 opacity-10" />
+                  <p className="font-black uppercase tracking-widest text-[10px]">لم تقم بنشر أي شيء بعد</p>
+               </div>
+             )}
+          </div>
+       </div>
+
+       {/* Create Post Modal */}
+       <AnimatePresence>
+          {showPostModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-stone-900/60 backdrop-blur-md">
+               <motion.div 
+                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                 animate={{ opacity: 1, scale: 1, y: 0 }}
+                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                 className="bg-white w-full max-w-xl rounded-[48px] p-8 space-y-8 shadow-2xl relative"
+                 dir="rtl"
+               >
+                  <button onClick={() => setShowPostModal(false)} className="absolute top-8 left-8 p-3 bg-stone-50 rounded-2xl text-stone-400 hover:text-rose-500 transition-colors"><X size={20} /></button>
+                  
+                  <div className="space-y-4">
+                     <h3 className="text-2xl font-black text-stone-900 pr-2 border-r-4 border-brand-green">مشاركة جديدة</h3>
+                     <p className="text-stone-400 text-sm font-medium">شارك خبراتك، تساؤلاتك أو تحديثاتك مع زملائك الفلاحين</p>
+                  </div>
+
+                  <div className="space-y-6">
+                     <textarea 
+                       value={newPostContent}
+                       onChange={(e) => setNewPostContent(e.target.value)}
+                       placeholder="بماذا تفكر اليوم؟"
+                       rows={6}
+                       className="w-full bg-stone-50 p-6 rounded-[32px] outline-none border-2 border-transparent focus:border-brand-green text-lg font-medium transition-all resize-none shadow-inner"
+                     />
+
+                     <div className="flex items-center gap-4">
+                        <label className="flex-1 cursor-pointer group">
+                           <input type="file" accept="image/*" onChange={(e) => setPostImage(e.target.files?.[0] || null)} className="hidden" />
+                           <div className="flex items-center justify-center gap-3 p-5 bg-emerald-50 border-2 border-dashed border-brand-green/30 rounded-2xl group-hover:bg-emerald-100 transition-all">
+                              <Image size={24} className="text-brand-green" />
+                              <span className="text-sm font-black text-brand-green">
+                                 {postImage ? postImage.name : "إضافة صورة"}
+                              </span>
+                           </div>
+                        </label>
+                        <button 
+                          disabled={!newPostContent.trim() || isPosting}
+                          onClick={handleCreatePost}
+                          className="flex-[2] bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl shadow-stone-900/20 active:scale-95 transition-all disabled:opacity-30"
+                        >
+                           {isPosting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={20} />}
+                           {isPosting ? 'جاري النشر...' : 'نشر الآن'}
+                        </button>
+                     </div>
+                  </div>
+               </motion.div>
+            </div>
+          )}
+       </AnimatePresence>
 
        {/* Professional Upgrade Section */}
        {profile?.role === 'farmer' && (
@@ -2230,7 +2724,8 @@ const RenderAdmin = () => {
       query(collection(db, 'professionalApplications'), where('status', '==', 'pending')),
       (snap) => {
         setApplications(snap.docs.map(d => ({ ...d.data(), id: d.id } as ProfessionalApplication)));
-      }
+      },
+      (err) => console.error("Admin Applications Error:", err)
     );
     return () => unsubApps();
   }, []);

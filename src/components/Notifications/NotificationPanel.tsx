@@ -103,7 +103,7 @@ export const NotificationPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
             {/* List */}
             <div className="flex-1 overflow-y-auto">
-              <AnimatePresence mode="popLayout">
+              <AnimatePresence mode="popLayout text-right">
                 {filteredNotifs.length > 0 ? (
                   filteredNotifs.map(notif => (
                     <NotificationItem 

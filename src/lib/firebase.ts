@@ -1,5 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { 
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, 
+  User as FirebaseUser, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  updateProfile, sendPasswordResetEmail, sendEmailVerification
+} from 'firebase/auth';
 import { 
   initializeFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, serverTimestamp, getDocFromServer, 
@@ -47,6 +51,7 @@ export const signInWithGoogle = async () => {
 };
 
 export const logout = () => signOut(auth);
+export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, sendEmailVerification };
 
 export interface UserProfile {
   uid: string;
@@ -131,7 +136,9 @@ export interface CommunityComment {
 export interface Booking {
   id: string;
   expertId: string;
+  expertName?: string;
   userId: string;
+  userName?: string;
   date: string; // ISO string
   timeSlot: string; // e.g. "09:00"
   topic: string;
@@ -206,30 +213,41 @@ export const syncUserProfile = async (user: FirebaseUser, additionalData: Partia
       email: user.email,
       photoURL: user.photoURL,
       role: assignedRole,
-      isVerified: (assignedRole === 'veterinarian' || assignedRole === 'engineer') ? false : undefined,
+      isVerified: false,
       wilaya: additionalData.wilaya || '',
       commune: additionalData.commune || '',
       createdAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
-      ...additionalData
-    } as any;
-    await setDoc(userRef, initialProfile);
+    };
+
+    // Filter out undefined and null from additionalData to prep for setDoc
+    const cleanAdditional = Object.fromEntries(
+      Object.entries(additionalData).filter(([_, v]) => v !== undefined && v !== null)
+    );
+
+    await setDoc(userRef, { ...initialProfile, ...cleanAdditional });
     // Initialize memory
     const memoryRef = doc(db, 'users', user.uid, 'memory', 'history');
     await setDoc(memoryRef, { recentSearches: [], visitedProfiles: [] });
-    return initialProfile;
+    return { ...initialProfile, ...cleanAdditional } as UserProfile;
   }
 
   // Update logic: Only include keys that should actually change or be synced
+  // Filter out undefined values from update payload
   const updatePayload: any = { 
     lastSeen: serverTimestamp(),
     nameLower,
     searchKeywords,
-    ...additionalData
   };
+
+  Object.entries(additionalData).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) {
+      updatePayload[k] = v;
+    }
+  });
   
   // Only send role if it's different from what's in DB to avoid unnecessary rule triggers
-  if (existingData?.role !== assignedRole) {
+  if (assignedRole && existingData?.role !== assignedRole) {
     updatePayload.role = assignedRole;
   }
 
@@ -379,6 +397,79 @@ export const isFollowing = async (myUid: string, targetUid: string) => {
   return snap.exists();
 };
 
+export const getFollowers = async (userId: string) => {
+  const snap = await getDocs(collection(db, 'users', userId, 'followers'));
+  const uids = snap.docs.map(d => d.id);
+  const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
+  return profiles.filter((p): p is UserProfile => p !== null);
+};
+
+export const getFollowing = async (userId: string) => {
+  const snap = await getDocs(collection(db, 'users', userId, 'following'));
+  const uids = snap.docs.map(d => d.id);
+  const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
+  return profiles.filter((p): p is UserProfile => p !== null);
+};
+
+// Personal Posts System
+export const addPersonalPost = async (userId: string, data: { content: string, imageUrl?: string }) => {
+  const postsRef = collection(db, 'users', userId, 'posts');
+  const postRef = doc(postsRef);
+  
+  const postData: any = {
+    content: data.content,
+    id: postRef.id,
+    authorId: userId,
+    createdAt: serverTimestamp(),
+    likesCount: 0
+  };
+  
+  if (data.imageUrl) postData.imageUrl = data.imageUrl;
+  
+  await setDoc(postRef, postData);
+  return postRef.id;
+};
+
+export const deletePersonalPost = async (userId: string, postId: string) => {
+  await deleteDoc(doc(db, 'users', userId, 'posts', postId));
+};
+
+export const toggleLikePersonalPost = async (profileUid: string, postId: string, myUid: string, liked: boolean) => {
+  const likeRef = doc(db, 'users', profileUid, 'posts', postId, 'likes', myUid);
+  const postRef = doc(db, 'users', profileUid, 'posts', postId);
+  if (liked) {
+    await setDoc(likeRef, { userId: myUid, createdAt: serverTimestamp() });
+    await updateDoc(postRef, { likesCount: increment(1) });
+  } else {
+    await deleteDoc(likeRef);
+    await updateDoc(postRef, { likesCount: increment(-1) });
+  }
+};
+
+export const hasLikedPersonalPost = async (profileUid: string, postId: string, myUid: string) => {
+  const snap = await getDoc(doc(db, 'users', profileUid, 'posts', postId, 'likes', myUid));
+  return snap.exists();
+};
+
+export const addPersonalPostComment = async (profileUid: string, postId: string, comment: any) => {
+  const ref = doc(collection(db, 'users', profileUid, 'posts', postId, 'comments'));
+  
+  const commentData: any = {
+    ...comment,
+    id: ref.id,
+    createdAt: serverTimestamp()
+  };
+
+  // Remove undefined values
+  Object.keys(commentData).forEach(key => {
+    if (commentData[key] === undefined) {
+      delete commentData[key];
+    }
+  });
+
+  await setDoc(ref, commentData);
+};
+
 // Communities logic
 export const createCommunity = async (data: Omit<Community, 'id' | 'createdAt' | 'memberCount'>) => {
   const ref = doc(collection(db, 'communities'));
@@ -514,7 +605,7 @@ export const createBooking = async (data: Omit<Booking, 'id' | 'createdAt'>) => 
       body: JSON.stringify({
         token,
         title: "حجز استشارة جديدة",
-        body: `لديك حجز جديد بتاريخ ${data.date} الساعة ${data.timeSlot} حول موضوع: ${data.topic}`,
+        body: `لديك حجز جديد من ${data.userName || 'مستخدم جديد'} بتاريخ ${data.date} الساعة ${data.timeSlot}`,
         data: { bookingId: ref.id, type: 'booking' }
       })
     }).catch(err => console.error("Booking Notification Error:", err));

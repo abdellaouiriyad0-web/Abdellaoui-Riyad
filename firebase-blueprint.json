@@ -99,6 +99,41 @@
         "recentSearches": { "type": "array", "items": { "type": "string" } },
         "visitedProfiles": { "type": "array", "items": { "type": "string" } }
       }
+    },
+    "PersonalPost": {
+      "title": "Personal Profile Post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number" }
+      },
+      "required": ["authorId", "content", "createdAt"]
+    },
+    "PostComment": {
+      "title": "Profile Post Comment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "content", "createdAt"]
+    },
+    "PostLike": {
+      "title": "Profile Post Like",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "createdAt"]
     }
   },
   "firestore": {
@@ -106,6 +141,9 @@
     "/users/{userId}/memory/history": { "schema": "Memory", "description": "Lightweight user history" },
     "/users/{userId}/following/{followedId}": { "schema": "Follow", "description": "Users followed by this user" },
     "/users/{userId}/followers/{followerId}": { "schema": "Follow", "description": "Users following this user" },
+    "/users/{userId}/posts/{postId}": { "schema": "PersonalPost", "description": "Individual user posts" },
+    "/users/{userId}/posts/{postId}/likes/{likeId}": { "schema": "PostLike", "description": "Likes on personal posts" },
+    "/users/{userId}/posts/{postId}/comments/{commentId}": { "schema": "PostComment", "description": "Comments on personal posts" },
     "/requests/{requestId}": { "schema": "Request", "description": "Service tracking" },
     "/chats/{chatId}/messages/{messageId}": { "schema": "Message", "description": "Messaging system" },
     "/communities/{communityId}": { "schema": "Community", "description": "Professional groups" },
