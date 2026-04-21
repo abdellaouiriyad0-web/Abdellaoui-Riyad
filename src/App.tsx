@@ -22,7 +22,7 @@ import {
   toggleLikePost, hasLikedPost, addPostComment, CommunityComment,
   ProfessionalApplication, submitProfessionalApplication, resolveProfessionalApplication
 } from "./lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, getRedirectResult } from "firebase/auth";
 import { onSnapshot, doc, collection, query, where, or, orderBy, limit, updateDoc, getDocs, collectionGroup } from "firebase/firestore";
 import { onMessage } from "firebase/messaging";
 import { NotificationBell } from "./components/Notifications/NotificationBell";
@@ -234,16 +234,21 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const navigate = useNavigate();
+  const toast = useToast();
+
+  useEffect(() => {
+    getRedirectResult(auth).catch((error) => {
+      console.error("Google redirect error:", error);
+      toast.error("Google login failed: " + error.message);
+    });
+  }, [toast]);
 
   const handleGoogleLogin = async () => {
     try {
-      const user = await signInWithGoogle();
-      if (user) {
-        await syncUserProfile(user);
-        onAuth();
-      }
-    } catch (error) {
+      await signInWithGoogle();
+    } catch (error: any) {
       console.error("Google login failed", error);
+      toast.error(error.message || "Google login failed");
     }
   };
 
