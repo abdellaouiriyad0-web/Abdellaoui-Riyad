@@ -234,6 +234,7 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleGoogleLogin = async () => {
     try {
@@ -242,8 +243,11 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
         await syncUserProfile(user);
         onAuth();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Google login failed", error);
+      toast.error(error?.message?.includes('permission') 
+        ? "فشل تسجيل الدخول: عطل في الأذونات" 
+        : "خطأ في تسجيل الدخول عبر جوجل");
     }
   };
 
