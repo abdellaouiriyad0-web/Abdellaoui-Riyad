@@ -78,6 +78,11 @@ export const TRANSLATIONS = {
     crops: "المحاصيل",
     livestock: "المواشي",
     googleLogin: "التسجيل عبر جوجل",
+    marketplace: "سوق الفلاح",
+    cart: "سلة التسوق",
+    addToCart: "أضف إلى السلة",
+    checkout: "تأكيد الطلب",
+    communities: "المجتمعات",
   },
   en: {
     slogan: "Everything a farmer needs",
@@ -137,6 +142,11 @@ export const TRANSLATIONS = {
     crops: "Crops",
     livestock: "Livestock",
     googleLogin: "Sign in with Google",
+    marketplace: "Marketplace",
+    cart: "Shopping Cart",
+    addToCart: "Add to Cart",
+    checkout: "Checkout",
+    communities: "Communities",
   },
   fr: {
     slogan: "Tout ce dont un agriculteur a besoin",
@@ -196,5 +206,10 @@ export const TRANSLATIONS = {
     crops: "Cultures",
     livestock: "Bétail",
     googleLogin: "Se connecter avec Google",
+    marketplace: "Marché",
+    cart: "Panier",
+    addToCart: "Ajouter au panier",
+    checkout: "Commander",
+    communities: "Communautés",
   }
 };

@@ -53,6 +53,13 @@ export const signInWithGoogle = async () => {
 export const logout = () => signOut(auth);
 export { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, sendEmailVerification };
 
+export interface UserService {
+  id: string;
+  title: string;
+  description: string;
+  price?: string;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string | null;
@@ -73,6 +80,7 @@ export interface UserProfile {
   lastSeen: any;
   followersCount?: number;
   followingCount?: number;
+  services?: UserService[];
 }
 
 export interface ProfessionalApplication {
@@ -130,6 +138,33 @@ export interface CommunityComment {
   authorName: string;
   authorPhoto?: string;
   content: string;
+  createdAt: any;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl?: string;
+  sellerId: string;
+  category: string;
+  stock?: number;
+  createdAt: any;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+}
+
+export interface Order {
+  id: string;
+  buyerId: string;
+  items: CartItem[];
+  totalAmount: number;
+  status: 'pending' | 'completed' | 'cancelled';
+  shippingAddress: string;
   createdAt: any;
 }
 
@@ -622,6 +657,23 @@ export const getExpertBookings = async (expertId: string) => {
   const q = query(collection(db, 'bookings'), where('expertId', '==', expertId));
   const snap = await getDocs(q);
   return snap.docs.map(d => d.data() as Booking);
+};
+
+// --- Marketplace Helpers ---
+export const addProduct = async (product: Omit<Product, 'id' | 'createdAt'>) => {
+  const docRef = await addDoc(collection(db, 'products'), {
+    ...product,
+    createdAt: serverTimestamp()
+  });
+  return docRef.id;
+};
+
+export const createOrder = async (order: Omit<Order, 'id' | 'createdAt'>) => {
+  const docRef = await addDoc(collection(db, 'orders'), {
+    ...order,
+    createdAt: serverTimestamp()
+  });
+  return docRef.id;
 };
 
 // --- Weather Data ---

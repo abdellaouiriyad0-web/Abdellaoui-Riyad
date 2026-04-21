@@ -134,6 +134,36 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "createdAt"]
+    },
+    "Product": {
+      "title": "Marketplace Product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "category": { "type": "string" },
+        "stock": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "sellerId", "createdAt"]
+    },
+    "Order": {
+      "title": "Marketplace Order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "object" } },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "cancelled"] },
+        "shippingAddress": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["buyerId", "items", "totalAmount", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -149,6 +179,8 @@
     "/communities/{communityId}": { "schema": "Community", "description": "Professional groups" },
     "/communities/{communityId}/members/{userId}": { "schema": "User", "description": "Community members" },
     "/communities/{communityId}/posts/{postId}": { "schema": "CommunityPost", "description": "Knowledge sharing" },
-    "/calls/{callId}": { "schema": "Call", "description": "Real-time communication" }
+    "/calls/{callId}": { "schema": "Call", "description": "Real-time communication" },
+    "/products/{productId}": { "schema": "Product", "description": "Marketplace items" },
+    "/orders/{orderId}": { "schema": "Order", "description": "Purchase records" }
   }
 }

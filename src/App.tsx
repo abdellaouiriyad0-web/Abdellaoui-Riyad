@@ -8,7 +8,8 @@ import {
   CheckCircle, ChevronLeft, MapPin, Activity, Droplets, Wind as WindIcon, Image,
   Navigation, Star, History, Sprout, Footprints, Play, Phone, Video, Users,
   Hash, BookOpen, AlertCircle, X, Check, ArrowRight, Mic, ShieldAlert, ShieldCheck,
-  Eye, Ban, Trash2, MoreVertical, MessageCircle, Share2, Edit3, UserCircle, Settings2, EyeOff
+  Eye, Ban, Trash2, MoreVertical, MessageCircle, Share2, Edit3, UserCircle, Settings2, EyeOff,
+  ShoppingBag
 } from "lucide-react";
 import { Language, TRANSLATIONS, WILAYAS, CATEGORIES } from "./lib/constants";
 import { GoogleGenAI } from "@google/genai";
@@ -23,7 +24,8 @@ import {
   ProfessionalApplication, submitProfessionalApplication, resolveProfessionalApplication,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification,
   addPersonalPost, deletePersonalPost, toggleLikePersonalPost, hasLikedPersonalPost, addPersonalPostComment,
-  getFollowers, getFollowing
+  getFollowers, getFollowing,
+  addProduct, createOrder, Product, Order, CartItem
 } from "./lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { onSnapshot, doc, collection, query, where, or, orderBy, limit, updateDoc, getDocs, collectionGroup, deleteDoc } from "firebase/firestore";
@@ -482,13 +484,15 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
 
 const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () => void, profile: UserProfile | null, key?: string }) => {
   const t = TRANSLATIONS[lang];
-  const [view, setView] = useState<'home' | 'users' | 'communities' | 'messages' | 'requests' | 'profile' | 'admin'>('home');
+  const [view, setView] = useState<'home' | 'users' | 'communities' | 'messages' | 'requests' | 'profile' | 'admin' | 'marketplace'>('home');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<UserProfile | null>(null);
   const [showAI, setShowAI] = useState(false);
   const [activeCall, setActiveCall] = useState<CallEvent | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
 
   if (profile?.isBlocked) {
     return (
@@ -607,7 +611,8 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
         <div className="space-y-2 flex-1">
           <SidebarItem id="home" icon={Sprout} label={t.home} />
           <SidebarItem id="users" icon={Users} label={t.experts} />
-          <SidebarItem id="communities" icon={Store} label={lang === 'ar' ? 'المجتمعات' : 'Communities'} />
+          <SidebarItem id="marketplace" icon={Store} label={t.marketplace} />
+          <SidebarItem id="communities" icon={Hash} label={t.communities} />
           <SidebarItem id="messages" icon={MessageSquare} label={t.messages} />
           <SidebarItem id="requests" icon={Calendar} label={t.consultations} />
           {profile?.role === 'admin' && <SidebarItem id="admin" icon={ShieldAlert} label="Admin" />}
@@ -650,11 +655,43 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
           <AnimatePresence mode="wait">
             {view === 'home' && <RenderHome profile={profile} openProfile={openProfile} weather={weather} weatherLoading={weatherLoading} setView={setView} />}
             {view === 'users' && <RenderUsers openProfile={openProfile} myUid={profile?.uid || ''} profile={profile} />}
+            {view === 'marketplace' && <RenderMarketplace profile={profile} onAddToCart={(p) => {
+               setCart(prev => {
+                 const existing = prev.find(item => item.product.id === p.id);
+                 if (existing) return prev.map(item => item.product.id === p.id ? { ...item, quantity: item.quantity + 1 } : item);
+                 return [...prev, { product: p, quantity: 1 }];
+               });
+               setShowCart(true);
+            }} />}
             {view === 'communities' && <RenderCommunities openProfile={openProfile} userProfile={profile} />}
             {view === 'messages' && profile && <RenderMessages myUid={profile.uid} activeChat={activeChat} setActiveChat={setActiveChat} openProfile={openProfile} />}
             {view === 'requests' && <RenderRequests profile={profile} openProfile={openProfile} />}
             {view === 'admin' && <RenderAdmin />}
             {view === 'profile' && <RenderProfile profile={profile} onLogout={onLogout} />}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {showCart && (
+              <CartModal 
+                cart={cart} 
+                onClose={() => setShowCart(false)} 
+                onUpdateQuantity={(pid, q) => setCart(prev => q === 0 ? prev.filter(i => i.product.id !== pid) : prev.map(i => i.product.id === pid ? { ...i, quantity: q } : i))}
+                onCheckout={async (address) => {
+                   if (!profile) return;
+                   const total = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+                   await createOrder({
+                      buyerId: profile.uid,
+                      items: cart,
+                      totalAmount: total,
+                      status: 'pending',
+                      shippingAddress: address
+                   });
+                   setCart([]);
+                   setShowCart(false);
+                   // toast success here would be good but I'll add it in CartModal
+                }}
+              />
+            )}
           </AnimatePresence>
         </main>
 
@@ -662,8 +699,8 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
         <nav className="lg:hidden fixed bottom-8 left-6 right-6 bg-stone-900/90 backdrop-blur-3xl border border-white/20 p-2 rounded-[36px] flex items-center justify-between z-40 shadow-2xl">
           {[
             { id: 'home', icon: Sprout },
-            { id: 'users', icon: Users },
-            { id: 'communities', icon: Store },
+            { id: 'marketplace', icon: Store },
+            { id: 'communities', icon: Hash },
             { id: 'messages', icon: MessageSquare },
             { id: 'requests', icon: Calendar },
             { id: 'profile', icon: User },
@@ -672,9 +709,9 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
             <button 
               key={item.id}
               onClick={() => { setView(item.id as any); setSelectedUser(null); }}
-              className={`p-4 transition-all ${view === item.id ? 'text-brand-green scale-110' : 'text-stone-500'}`}
+              className={`p-3.5 transition-all ${view === item.id ? 'text-brand-green scale-110' : 'text-stone-500'}`}
             >
-              <item.icon size={24} />
+              <item.icon size={22} />
             </button>
           ))}
         </nav>
@@ -830,8 +867,9 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
   const [loading, setLoading] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
   const [posts, setPosts] = useState<PersonalPost[]>([]);
-  const [tab, setTab] = useState<'content' | 'follow'>('content');
-  const [socialList, setSocialList] = useState<{ type: 'followers' | 'following', users: UserProfile[] } | null>(null);
+  const isProfessional = user.role !== 'farmer' && user.role !== 'admin';
+  const [tab, setTab] = useState<'posts' | 'services' | 'followers' | 'following'>(isProfessional ? 'services' : 'posts');
+  const [socialUsers, setSocialUsers] = useState<UserProfile[]>([]);
   const [liveUser, setLiveUser] = useState<UserProfile>(user);
 
   useEffect(() => {
@@ -863,17 +901,19 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
   };
 
   const showSocial = async (type: 'followers' | 'following') => {
+    setLoading(true);
     const users = type === 'followers' ? await getFollowers(user.uid) : await getFollowing(user.uid);
-    setSocialList({ type, users });
-    setTab('follow');
+    setSocialUsers(users);
+    setTab(type);
+    setLoading(false);
   };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-stone-900/60 backdrop-blur-md flex items-center justify-center p-6">
       <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white max-w-xl w-full rounded-[48px] overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
-        <button onClick={onClose} className="absolute top-6 right-6 p-3 bg-white/20 backdrop-blur-md rounded-2xl text-stone-900 z-10"><LogOut size={20} className="rotate-90" /></button>
+        <button onClick={onClose} className="absolute top-6 right-6 p-3 bg-white/20 backdrop-blur-md rounded-2xl text-stone-900 z-10 hover:bg-stone-100 transition-all"><X size={20} /></button>
         
-        <div className="overflow-y-auto no-scrollbar">
+        <div className="overflow-y-auto no-scrollbar" dir="rtl">
           <div className="h-48 bg-gradient-to-br from-brand-green to-brand-green/70 relative">
             <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
                <img src={user.photoURL || `https://picsum.photos/seed/${user.uid}/300`} className="w-32 h-32 rounded-[40px] border-8 border-white shadow-xl object-cover" referrerPolicy="no-referrer" />
@@ -882,34 +922,34 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
           </div>
 
           <div className="pt-20 pb-10 px-8 text-center space-y-6">
-            <div>
+            <div className="space-y-1">
               <h3 className="text-3xl font-black text-stone-900">{liveUser.displayName}</h3>
-              <div className="flex items-center justify-center gap-2 mt-1">
+              <div className="flex items-center justify-center gap-2">
                  <div className="bg-brand-green/10 px-3 py-1 rounded-full text-[10px] font-black text-brand-green uppercase tracking-widest">{liveUser.role}</div>
                  <span className="text-stone-300">•</span>
-                 <span className="text-stone-400 text-xs font-bold uppercase tracking-widest">{liveUser.wilaya || 'ALGERIA'}</span>
+                 <span className="text-stone-400 text-xs font-bold uppercase tracking-widest">{liveUser.wilaya || 'الجزائر'}</span>
               </div>
             </div>
 
             <div className="flex justify-center gap-8 py-2 border-y border-stone-50">
                <button onClick={() => showSocial('followers')} className="text-center group">
                  <p className="text-lg font-black text-stone-900 group-hover:text-brand-green transition-colors">{liveUser.followersCount || 0}</p>
-                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Followers</p>
+                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">متابع</p>
                </button>
                <button onClick={() => showSocial('following')} className="text-center group">
                  <p className="text-lg font-black text-stone-900 group-hover:text-brand-green transition-colors">{liveUser.followingCount || 0}</p>
-                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Following</p>
+                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">يتابع</p>
                </button>
             </div>
             
-            <p className="text-sm text-stone-600 font-medium leading-relaxed italic">
-              "{liveUser.bio || 'Professional agricultural expert dedicated to food security and smart farming in Algeria.'}"
+            <p className="text-sm text-stone-600 font-medium leading-relaxed italic px-4">
+              "{liveUser.bio || 'خبير فلاحي مهني مكرس لتعزيز الأمن الغذائي والزراعة الذكية في الجزائر.'}"
             </p>
 
             <div className="grid grid-cols-2 gap-4">
                <button onClick={handleFollow} disabled={loading} className={`py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${following ? 'bg-stone-100 text-stone-600' : 'bg-stone-900 text-white shadow-xl shadow-stone-950/20'}`}>
                   {following ? <Check size={18} /> : <Plus size={18} />}
-                  {following ? 'Following' : 'Follow Expert'}
+                  {following ? 'متابع' : 'متابعة الخبير'}
                </button>
                <button onClick={() => setShowBooking(true)} className="bg-brand-green text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-brand-green/20 active:scale-95">
                  <Calendar size={18} />
@@ -924,23 +964,31 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
             </div>
 
             {/* Content Tabs */}
-            <div className="space-y-6 pt-6">
+            <div className="space-y-6 pt-6 text-right">
                <div className="flex bg-stone-100 p-1.5 rounded-2xl">
                   <button 
-                    onClick={() => { setTab('content'); setSocialList(null); }} 
-                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'content' && !socialList ? 'bg-white text-stone-900 shadow-md' : 'text-stone-400'}`}
+                    onClick={() => setTab('posts')} 
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'posts' ? 'bg-white text-stone-900 shadow-md' : 'text-stone-400'}`}
                   >
                     المنشورات
                   </button>
-                  {socialList && (
+                  {isProfessional && (
+                    <button 
+                      onClick={() => setTab('services')} 
+                      className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'services' ? 'bg-white text-stone-900 shadow-md' : 'text-stone-400'}`}
+                    >
+                      الخدمات
+                    </button>
+                  )}
+                  {(tab === 'followers' || tab === 'following') && (
                     <button className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-stone-900 shadow-md">
-                      {socialList.type === 'followers' ? 'المتابعون' : 'يتابع'}
+                      {tab === 'followers' ? 'المتابعون' : 'يتابع'}
                     </button>
                   )}
                </div>
 
-               <div className="space-y-6 text-right">
-                  {tab === 'content' && !socialList ? (
+               <div className="space-y-6">
+                  {tab === 'posts' ? (
                     <div className="space-y-6">
                       {posts.length > 0 ? (
                         posts.map(post => (
@@ -958,10 +1006,28 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
                         </div>
                       )}
                     </div>
-                  ) : socialList ? (
+                  ) : tab === 'services' ? (
                     <div className="space-y-4">
-                      {socialList.users.length > 0 ? (
-                        socialList.users.map(u => (
+                      {liveUser.services && liveUser.services.length > 0 ? (
+                        liveUser.services.map(service => (
+                          <div key={service.id} className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm text-right space-y-2 group hover:border-brand-green/30 transition-all">
+                             <div className="flex items-center justify-between">
+                                <h5 className="font-black text-stone-900">{service.title}</h5>
+                                {service.price && <span className="bg-brand-green/10 text-brand-green text-[10px] font-black px-3 py-1 rounded-full">{service.price}</span>}
+                             </div>
+                             <p className="text-stone-500 text-xs font-medium leading-relaxed">{service.description}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-12 bg-stone-50 rounded-[32px] border border-dashed border-stone-200">
+                          <p className="text-stone-400 text-xs font-bold uppercase tracking-widest">لا توجد خدمات معروضة حالياً</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (tab === 'followers' || tab === 'following') ? (
+                    <div className="space-y-4">
+                      {socialUsers.length > 0 ? (
+                        socialUsers.map(u => (
                           <div key={u.uid} className="flex items-center justify-between bg-stone-50 p-4 rounded-2xl">
                             <div className="flex items-center gap-4">
                               <img src={u.photoURL || `https://picsum.photos/seed/${u.uid}/100`} className="w-10 h-10 rounded-full object-cover" />
@@ -970,7 +1036,6 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
                                 <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">{u.role}</p>
                               </div>
                             </div>
-                            {/* We could add follow buttons here too */}
                           </div>
                         ))
                       ) : (
@@ -2172,6 +2237,283 @@ const PersonalPostCard: React.FC<{
   );
 };
 
+const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | null, onAddToCart: (p: Product) => void }) => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: '', description: '', price: '', category: '' });
+  const [productImage, setProductImage] = useState<File | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const toast = useToast();
+  const { lang } = useAppContext();
+  const t = TRANSLATIONS[lang];
+
+  useEffect(() => {
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(50));
+    const unsub = onSnapshot(q, (snap) => {
+      setProducts(snap.docs.map(d => ({ ...d.data(), id: d.id } as Product)));
+    }, (err) => console.error("Marketplace Listener Error:", err));
+    return () => unsub();
+  }, []);
+
+  const handleAddProduct = async () => {
+    if (!profile) return;
+    if (!newProduct.name || !newProduct.price) return toast.error("يرجى ملء الاسم والسعر");
+    setIsAdding(true);
+    try {
+      let imageUrl = "";
+      if (productImage) {
+        const path = `products/${profile.uid}/${Date.now()}_${productImage.name}`;
+        imageUrl = await uploadFile(productImage, path);
+      }
+      await addProduct({
+        ...newProduct,
+        price: parseFloat(newProduct.price),
+        imageUrl,
+        sellerId: profile.uid,
+        createdAt: new Date()
+      });
+      setShowAddForm(false);
+      setNewProduct({ name: '', description: '', price: '', category: '' });
+      setProductImage(null);
+      toast.success("تمت إضافة المنتج بنجاح");
+    } catch (err) {
+      toast.error("فشل إضافة المنتج");
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="space-y-8 pb-32">
+       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+             <h2 className="text-4xl font-black text-stone-900 tracking-tighter">{t.marketplace}</h2>
+             <p className="text-stone-500 font-medium tracking-wide">{lang === 'ar' ? 'اكتشف أفضل المستلزمات والمنتجات الفلاحية' : 'Discover the best agricultural supplies and products'}</p>
+          </div>
+          <div className="flex gap-3">
+             <div className="relative flex-1 md:w-80">
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
+                <input 
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={lang === 'ar' ? 'ابحث عن بذور، معدات، أسمدة...' : 'Search for seeds, tools, fertilizers...'}
+                  className="w-full bg-white pr-12 pl-6 py-4 rounded-2xl border border-stone-100 shadow-sm focus:ring-2 ring-brand-green/20 outline-none font-bold"
+                />
+             </div>
+             {(profile?.role === 'supplier' || profile?.role === 'engineer') && (
+               <button 
+                 onClick={() => setShowAddForm(true)}
+                 className="bg-brand-green text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-green/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+               >
+                  <Plus size={20} /> {lang === 'ar' ? 'أضف منتج' : 'Add Product'}
+               </button>
+             )}
+          </div>
+       </div>
+
+       <AnimatePresence>
+         {showAddForm && (
+           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-xl space-y-6 relative">
+              <button onClick={() => setShowAddForm(false)} className="absolute top-6 left-6 text-stone-300 hover:text-stone-600"><X size={24} /></button>
+              <h3 className="text-xl font-black text-stone-900 mb-2">{lang === 'ar' ? 'إضافة منتج جديد للسوق' : 'Add New Product to Marketplace'}</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="space-y-4">
+                    <input 
+                      placeholder={lang === 'ar' ? 'اسم المنتج' : 'Product Name'}
+                      value={newProduct.name}
+                      onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                      className="w-full p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
+                    />
+                    <div className="flex gap-4">
+                       <input 
+                         placeholder={lang === 'ar' ? 'السعر (DA)' : 'Price (DA)'}
+                         type="number"
+                         value={newProduct.price}
+                         onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                         className="flex-1 p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
+                       />
+                       <select 
+                         value={newProduct.category}
+                         onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
+                         className="flex-1 p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
+                       >
+                         <option value="">{lang === 'ar' ? 'الفئة' : 'Category'}</option>
+                         <option value="seeds">{lang === 'ar' ? 'بذور' : 'Seeds'}</option>
+                         <option value="tools">{lang === 'ar' ? 'معدات' : 'Tools'}</option>
+                         <option value="fertilizer">{lang === 'ar' ? 'أسمدة' : 'Fertilizer'}</option>
+                         <option value="livestock">{lang === 'ar' ? 'مواشي' : 'Livestock'}</option>
+                       </select>
+                    </div>
+                    <textarea 
+                      placeholder={lang === 'ar' ? 'وصف المنتج...' : 'Product description...'}
+                      value={newProduct.description}
+                      onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                      rows={3}
+                      className="w-full p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-medium resize-none"
+                    />
+                 </div>
+                 
+                 <div className="flex flex-col gap-4">
+                    <div className="flex-1 border-2 border-dashed border-stone-100 rounded-[32px] flex flex-col items-center justify-center p-6 bg-stone-50/50 hover:bg-stone-50 transition-colors cursor-pointer group relative overflow-hidden" onClick={() => document.getElementById('product-img')?.click()}>
+                       <input id="product-img" type="file" hidden accept="image/*" onChange={(e) => setProductImage(e.target.files?.[0] || null)} />
+                       {productImage ? (
+                         <img src={URL.createObjectURL(productImage)} className="absolute inset-0 w-full h-full object-cover" />
+                       ) : (
+                         <>
+                           <Image size={40} className="text-stone-300 mb-2 group-hover:scale-110 transition-transform" />
+                           <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{lang === 'ar' ? 'رفع صورة المنتج' : 'Upload Product Image'}</p>
+                         </>
+                       )}
+                    </div>
+                    <button 
+                      onClick={handleAddProduct}
+                      disabled={isAdding}
+                      className="w-full bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl"
+                    >
+                       {isAdding ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Check size={20} /> {lang === 'ar' ? 'نشر في السوق' : 'Publish to Marketplace'}</>}
+                    </button>
+                 </div>
+              </div>
+           </motion.div>
+         )}
+       </AnimatePresence>
+
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProducts.map(product => (
+            <motion.div layout id={`product-${product.id}`} key={product.id} className="bg-white p-6 rounded-[40px] border border-stone-100 shadow-sm hover:shadow-xl hover:scale-[1.02] transition-all group flex flex-col h-full uppercase tracking-tighter">
+               <div className="h-56 bg-stone-50 rounded-[32px] mb-6 overflow-hidden relative">
+                  <img src={product.imageUrl || "https://picsum.photos/seed/product/400"} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl text-stone-900 font-black text-xs shadow-sm">
+                    {product.price} DA
+                  </div>
+               </div>
+               <div className="flex-1 space-y-2 text-right">
+                  <span className="text-[10px] font-black text-brand-green/60 uppercase tracking-[0.2em]">{product.category || (lang === 'ar' ? 'عام' : 'General')}</span>
+                  <h4 className="text-xl font-black text-stone-900 leading-tight">{product.name}</h4>
+                  <p className="text-stone-500 text-sm font-medium line-clamp-2 leading-relaxed">{product.description}</p>
+               </div>
+               <button 
+                 onClick={() => onAddToCart(product)}
+                 className="mt-6 w-full bg-stone-50 text-stone-900 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-green hover:text-white transition-all flex items-center justify-center gap-3"
+               >
+                  <ShoppingBag size={18} /> {t.addToCart}
+               </button>
+            </motion.div>
+          ))}
+          {filteredProducts.length === 0 && (
+            <div className="col-span-full py-40 text-center space-y-4">
+               <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center mx-auto text-stone-300">
+                  <Search size={40} />
+               </div>
+               <p className="text-stone-400 font-black uppercase tracking-widest text-[10px]">{lang === 'ar' ? 'لم يتم العثور على أي منتجات' : 'No products found'}</p>
+            </div>
+          )}
+       </div>
+    </div>
+  );
+};
+
+const CartModal = ({ cart, onClose, onUpdateQuantity, onCheckout }: { cart: CartItem[], onClose: () => void, onUpdateQuantity: (pid: string, q: number) => void, onCheckout: (address: string) => Promise<void> }) => {
+  const [address, setAddress] = useState("");
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const total = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const toast = useToast();
+  const { lang } = useAppContext();
+  const t = TRANSLATIONS[lang];
+
+  const handleCheckout = async () => {
+    if (!address) return toast.error(lang === 'ar' ? "يرجى إدخال عنوان التوصيل" : "Please enter delivery address");
+    setIsCheckingOut(true);
+    try {
+       await onCheckout(address);
+       toast.success(lang === 'ar' ? "تم الطلب بنجاح! سنتواصل معك قريباً" : "Order placed successfully! We will contact you soon");
+    } catch (err) {
+       toast.error(lang === 'ar' ? "فشل إكمال الطلب" : "Failed to complete order");
+    } finally {
+       setIsCheckingOut(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex justify-end" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-stone-900/60 backdrop-blur-md" />
+       
+       <motion.div initial={{ x: lang === 'ar' ? '100%' : '-100%' }} animate={{ x: 0 }} exit={{ x: lang === 'ar' ? '100%' : '-100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="relative bg-white w-full max-w-lg h-full shadow-2xl flex flex-col p-8 lg:p-12">
+          <div className="flex items-center justify-between mb-12">
+             <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-brand-green/10 text-brand-green rounded-2xl flex items-center justify-center">
+                   <ShoppingBag size={24} />
+                </div>
+                <div>
+                   <h3 className="text-2xl font-black text-stone-900 tracking-tighter">{t.cart}</h3>
+                   <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">{cart.length} {lang === 'ar' ? 'منتجات في السلة' : 'items in cart'}</p>
+                </div>
+             </div>
+             <button onClick={onClose} className="p-3 bg-stone-100 text-stone-400 rounded-2xl hover:bg-stone-200 transition-all">
+                <X size={20} />
+             </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-6 -mx-2 px-2">
+             {cart.map(item => (
+               <div key={item.product.id} className="flex gap-6 items-center p-4 bg-stone-50 rounded-[32px] group hover:bg-stone-100 transition-colors">
+                  <img src={item.product.imageUrl || "https://picsum.photos/seed/product/100"} className="w-24 h-24 rounded-2xl object-cover shadow-sm bg-white" referrerPolicy="no-referrer" />
+                  <div className="flex-1 space-y-1">
+                     <h4 className="font-black text-stone-900 leading-tight">{item.product.name}</h4>
+                     <p className="text-brand-green font-black text-xs uppercase tracking-widest">{item.product.price} DA</p>
+                     
+                     <div className="flex items-center gap-3 pt-2">
+                        <button onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8 rounded-lg bg-white border border-stone-100 flex items-center justify-center text-stone-900 active:scale-90 transition-transform">-</button>
+                        <span className="text-sm font-black text-stone-900 w-8 text-center">{item.quantity}</span>
+                        <button onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8 rounded-lg bg-white border border-stone-100 flex items-center justify-center text-stone-900 active:scale-90 transition-transform">+</button>
+                     </div>
+                  </div>
+                  <button onClick={() => onUpdateQuantity(item.product.id, 0)} className="p-3 text-stone-300 hover:text-rose-500 transition-colors">
+                     <Trash2 size={20} />
+                  </button>
+               </div>
+             ))}
+             {cart.length === 0 && (
+               <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-20 opacity-30">
+                  <ShoppingBag size={48} className="text-stone-300" />
+                  <p className="font-black uppercase tracking-widest text-xs">{lang === 'ar' ? 'السلة فارغة حالياً' : 'Cart is currently empty'}</p>
+               </div>
+             )}
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-stone-100 space-y-6">
+             {cart.length > 0 && (
+               <div className="space-y-4">
+                  <input 
+                    placeholder={lang === 'ar' ? "عنوان التوصيل (الولاية، البلدية، الحي...)" : "Delivery address (Wilaya, Commune, Street...)"}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full p-5 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold text-sm"
+                  />
+                  <div className="flex justify-between items-center px-4">
+                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{lang === 'ar' ? 'إجمالي المبلغ' : 'Total Amount'}</p>
+                     <p className="text-2xl font-black text-stone-900">{total} DA</p>
+                  </div>
+                  <button 
+                    onClick={handleCheckout}
+                    disabled={isCheckingOut}
+                    className="w-full bg-brand-green text-white py-6 rounded-[28px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-4 shadow-2xl shadow-brand-green/20 hover:scale-[1.02] active:scale-95 transition-all"
+                  >
+                     {isCheckingOut ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Check size={20} /> {t.checkout}</>}
+                  </button>
+               </div>
+             )}
+             <button onClick={onClose} className="w-full text-[10px] font-black text-stone-400 uppercase tracking-[0.3em] hover:text-stone-600 transition-colors">{lang === 'ar' ? 'مواصلة التسوق' : 'Continue Shopping'}</button>
+          </div>
+       </motion.div>
+    </div>
+  );
+};
+
 const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onLogout: () => void }) => {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -2186,6 +2528,46 @@ const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onL
   const [postImage, setPostImage] = useState<File | null>(null);
   const [isPosting, setIsPosting] = useState(false);
   const toast = useToast();
+
+  // Service Management
+  const [showServiceForm, setShowServiceForm] = useState(false);
+  const [newService, setNewService] = useState({ title: '', description: '', price: '' });
+  const [isExpert, setIsExpert] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setEditData({
+        displayName: profile.displayName || "",
+        wilaya: profile.wilaya || "الجزائر",
+        bio: profile.bio || ""
+      });
+      setIsExpert(profile.role !== 'farmer' && profile.role !== 'admin');
+    }
+  }, [profile]);
+
+  const handleAddService = async () => {
+    if (!profile || !newService.title || !newService.description) return;
+    try {
+      const updatedServices = [...(profile.services || []), { ...newService, id: Date.now().toString() }];
+      await updateDoc(doc(db, 'users', profile.uid), { services: updatedServices });
+      setNewService({ title: '', description: '', price: '' });
+      setShowServiceForm(false);
+      toast.success("تم إضافة الخدمة بنجاح");
+    } catch (err) {
+      toast.error("فشل في إضافة الخدمة");
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!profile || !profile.services) return;
+    try {
+      const updatedServices = profile.services.filter(s => s.id !== serviceId);
+      await updateDoc(doc(db, 'users', profile.uid), { services: updatedServices });
+      toast.success("تم حذف الخدمة");
+    } catch (err) {
+      toast.error("فشل في حذف الخدمة");
+    }
+  };
 
   useEffect(() => {
     if (!profile) return;
@@ -2301,6 +2683,76 @@ const RenderProfile = ({ profile, onLogout }: { profile: UserProfile | null, onL
             )}
           </div>
        </div>
+
+       {/* Services Section (For Experts) */}
+       {isExpert && (
+         <div className="space-y-6">
+            <div className="flex items-center justify-between px-4">
+               <h4 className="text-xs font-black text-stone-400 uppercase tracking-[0.3em]">الخدمات والخبرات المعروضة</h4>
+               <button 
+                 onClick={() => setShowServiceForm(true)}
+                 className="flex items-center gap-2 bg-brand-green text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-brand-green/10"
+               >
+                  <Plus size={16} /> إضافة خدمة
+               </button>
+            </div>
+
+            <div className="grid gap-4">
+               {profile?.services?.map((service) => (
+                 <div key={service.id} className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm flex items-center justify-between group">
+                    <div className="space-y-2">
+                       <h5 className="text-lg font-black text-stone-900">{service.title}</h5>
+                       <p className="text-stone-500 text-sm font-medium">{service.description}</p>
+                       {service.price && <p className="text-brand-green font-black text-xs">السعر المتوقع: {service.price}</p>}
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteService(service.id)}
+                      className="p-4 bg-rose-50 text-rose-500 rounded-2xl opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-100"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                 </div>
+               ))}
+
+               {(!profile?.services || profile.services.length === 0) && !showServiceForm && (
+                 <div className="text-center py-20 bg-stone-50/50 rounded-[48px] border-2 border-dashed border-stone-100 text-stone-300">
+                    <Store size={48} className="mx-auto mb-4 opacity-10" />
+                    <p className="font-black uppercase tracking-widest text-[10px]">لم تقم بإضافة أي خدمات بعد</p>
+                 </div>
+               )}
+
+               {showServiceForm && (
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-stone-50 p-8 rounded-[40px] border-2 border-brand-green/20 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <input 
+                         placeholder="عنوان الخدمة (مثال: تلقيح الأبقار)"
+                         value={newService.title}
+                         onChange={(e) => setNewService({...newService, title: e.target.value})}
+                         className="w-full p-4 bg-white rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
+                       />
+                       <input 
+                         placeholder="السعر (اختياري)"
+                         value={newService.price}
+                         onChange={(e) => setNewService({...newService, price: e.target.value})}
+                         className="w-full p-4 bg-white rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
+                       />
+                    </div>
+                    <textarea 
+                      placeholder="وصف مختصر للخدمة..."
+                      value={newService.description}
+                      onChange={(e) => setNewService({...newService, description: e.target.value})}
+                      rows={3}
+                      className="w-full p-4 bg-white rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-medium resize-none"
+                    />
+                    <div className="flex gap-4">
+                       <button onClick={handleAddService} className="flex-1 bg-stone-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest">تأكيد الإضافة</button>
+                       <button onClick={() => setShowServiceForm(false)} className="px-8 bg-white text-stone-400 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest">إلغاء</button>
+                    </div>
+                 </motion.div>
+               )}
+            </div>
+         </div>
+       )}
 
        {/* Posts Section */}
        <div className="space-y-6">
