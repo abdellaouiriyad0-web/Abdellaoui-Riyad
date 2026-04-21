@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { 
   initializeFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, 
   collection, query, where, getDocs, serverTimestamp, getDocFromServer, 
@@ -19,8 +19,6 @@ export const rtdb = getDatabase(app, (import.meta as any).env.VITE_FIREBASE_DATA
 export const storage = getStorage(app, firebaseConfig.storageBucket);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('email');
-googleProvider.addScope('profile');
 
 // Validation connection
 async function testConnection() {
@@ -35,7 +33,17 @@ async function testConnection() {
 testConnection();
 
 export const signInWithGoogle = async () => {
-  await signInWithRedirect(auth, googleProvider);
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error: any) {
+    if (error.code === 'auth/popup-closed-by-user') {
+      console.warn("User closed the login popup.");
+      return null;
+    }
+    console.error("Google Sign-In Error:", error);
+    throw error;
+  }
 };
 
 export const logout = () => signOut(auth);

@@ -22,9 +22,10 @@ import {
   toggleLikePost, hasLikedPost, addPostComment, CommunityComment,
   ProfessionalApplication, submitProfessionalApplication, resolveProfessionalApplication
 } from "./lib/firebase";
-import { onAuthStateChanged, getRedirectResult } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { onSnapshot, doc, collection, query, where, or, orderBy, limit, updateDoc, getDocs, collectionGroup } from "firebase/firestore";
 import { onMessage } from "firebase/messaging";
+import { AgroLogo } from "./components/AgroLogo";
 import { NotificationBell } from "./components/Notifications/NotificationBell";
 import { useToast } from "./hooks/useToast";
 import { useAppContext } from "./context/AppContext";
@@ -133,8 +134,8 @@ const Splash = ({ onComplete }: { onComplete: () => void, key?: string }) => {
         transition={{ duration: 1.2, ease: "backOut" }}
         className="relative mb-8"
       >
-        <div className="bg-white border-4 border-brand-green p-10 rounded-[48px] shadow-2xl relative z-10">
-          <Leaf size={120} className="text-brand-green" />
+        <div className="bg-white p-8 rounded-[48px] shadow-2xl relative z-10">
+          <AgroLogo size={140} showText={false} />
         </div>
         <motion.div
           animate={{ scale: [1, 1.4, 1], opacity: [0.2, 0.4, 0.2] }}
@@ -192,8 +193,8 @@ const LanguageSelector = ({ onSelect }: { onSelect: (lang: Language) => void, ke
         animate={{ y: 0, opacity: 1 }}
         className="text-center mb-16 relative z-10"
       >
-        <div className="bg-brand-green/10 w-24 h-24 rounded-[40px] flex items-center justify-center mx-auto mb-8 shadow-sm border border-brand-green/10">
-          <Leaf size={48} className="text-brand-green" />
+        <div className="bg-white w-32 h-32 rounded-[40px] flex items-center justify-center mx-auto mb-8 shadow-xl border border-stone-100 p-6">
+          <AgroLogo size={80} showText={false} />
         </div>
         <h2 className="text-5xl font-black text-stone-900 mb-4 tracking-tighter">AGROLIFE</h2>
         <p className="text-stone-400 text-sm font-bold tracking-[0.2em] uppercase">اختر لغتك • Choose Language</p>
@@ -234,6 +235,7 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleGoogleLogin = async () => {
     try {
@@ -242,8 +244,11 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
         await syncUserProfile(user);
         onAuth();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Google login failed", error);
+      toast.error(error?.message?.includes('permission') 
+        ? "فشل تسجيل الدخول: عطل في الأذونات" 
+        : "خطأ في تسجيل الدخول عبر جوجل");
     }
   };
 
@@ -514,11 +519,8 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
     <div className={`min-h-screen bg-stone-50 flex font-sans selection:bg-brand-green/30 ${lang === 'ar' ? 'font-arabic' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 bg-white border-r border-stone-100 flex-col p-8 sticky top-0 h-screen overflow-y-auto">
-        <div className="flex items-center gap-3 mb-12 px-2">
-           <div className="bg-brand-green p-2.5 rounded-2xl shadow-lg shadow-brand-green/20">
-             <Leaf className="text-white" size={28} />
-           </div>
-           <span className="font-black text-2xl tracking-tighter text-stone-900">AGROLIFE</span>
+        <div className="mb-12 px-2">
+           <AgroLogo size={40} />
         </div>
 
         <div className="space-y-2 flex-1">
@@ -554,10 +556,7 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
       <div className="flex-1 flex flex-col relative min-h-screen">
         {/* Dynamic Mobile Header */}
         <header className="lg:hidden h-20 bg-white/80 backdrop-blur-3xl border-b border-stone-100 px-6 flex items-center justify-between sticky top-0 z-40">
-           <div className="flex items-center gap-2">
-             <Leaf className="text-brand-green" size={24} />
-             <span className="font-black text-xl tracking-tighter">AGROLIFE</span>
-           </div>
+           <AgroLogo size={32} />
            <div className="flex items-center gap-4">
              <NotificationBell />
              <button onClick={() => setView('profile')} className="w-10 h-10 rounded-full border-2 border-stone-100 overflow-hidden">

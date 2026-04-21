@@ -103,10 +103,16 @@ async function startServer() {
     }
 
     // Normalization for OpenWeather (Removing accents for better search)
-    const normalizedWilaya = (wilaya as string)
+    let normalizedWilaya = (wilaya as string)
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[']/g, " ");
+      .replace(/[']/g, " ")
+      .trim();
+
+    // Specific mapping for common naming differences
+    if (normalizedWilaya.toLowerCase() === 'alger') {
+      normalizedWilaya = 'Algiers';
+    }
 
     if (!apiKey) {
       // Simulation Fallback for Demo without Key
