@@ -236,6 +236,7 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [code, setCode] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
+<<<<<<< HEAD
 
   const handleGoogleLogin = async () => {
     try {
@@ -249,6 +250,22 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
       toast.error(error?.message?.includes('permission') 
         ? "فشل تسجيل الدخول: عطل في الأذونات" 
         : "خطأ في تسجيل الدخول عبر جوجل");
+=======
+
+  useEffect(() => {
+    getRedirectResult(auth).catch((error) => {
+      console.error("Google redirect error:", error);
+      toast.error("Google login failed: " + error.message);
+    });
+  }, [toast]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Google login failed", error);
+      toast.error(error.message || "Google login failed");
+>>>>>>> 0450062 (update project)
     }
   };
 
@@ -827,7 +844,7 @@ const UserProfileModal = ({ user, myUid, onClose, onMessage, setActiveCall }: { 
   );
 };
 
-const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: (v: string) => void }) => {
+const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: React.Dispatch<React.SetStateAction<'home' | 'users' | 'communities' | 'messages' | 'requests' | 'profile' | 'admin'>> }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const isExpert = profile?.role !== 'farmer' && profile?.role !== 'admin';
   const currentTime = new Date().toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
