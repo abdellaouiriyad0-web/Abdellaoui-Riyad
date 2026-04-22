@@ -9,7 +9,7 @@ import {
   Navigation, Star, History, Sprout, Footprints, Play, Phone, Video, Users,
   Hash, BookOpen, AlertCircle, X, Check, ArrowRight, Mic, ShieldAlert, ShieldCheck,
   Eye, Ban, Trash2, MoreVertical, MessageCircle, Share2, Edit3, UserCircle, Settings2, EyeOff,
-  ShoppingBag
+  ShoppingBag, Sparkles, Award, UserSearch, Users2, LayoutList, Zap, PackageSearch
 } from "lucide-react";
 import { Language, TRANSLATIONS, WILAYAS, CATEGORIES } from "./lib/constants";
 import { GoogleGenAI } from "@google/genai";
@@ -251,7 +251,7 @@ const LanguageSelector = ({ onSelect }: { onSelect: (lang: Language) => void, ke
   );
 };
 
-const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: string }) => {
+const Auth = ({ lang, onAuth, onBack }: { lang: Language, onAuth: () => void, onBack: () => void, key?: string }) => {
   const t = TRANSLATIONS[lang];
   const [isLogin, setIsLogin] = useState(true);
   const [showVerification, setShowVerification] = useState(false);
@@ -263,10 +263,16 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
   const [wilaya, setWilaya] = useState("");
   const [code, setCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const lastClickRef = React.useRef<number>(0);
   const navigate = useNavigate();
   const toast = useToast();
 
   const handleGoogleLogin = async () => {
+    const now = Date.now();
+    if (loading || (now - lastClickRef.current < 1000)) return;
+    lastClickRef.current = now;
+    setLoading(true);
     try {
       const user = await signInWithGoogle();
       if (user) {
@@ -274,10 +280,29 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
         onAuth();
       }
     } catch (error: any) {
+      const errString = JSON.stringify(error) || "";
+      const errorMessage = error?.message || "";
+      const errorCode = error?.code || "";
+      
+      const isCancelled = 
+        errorCode.includes('cancelled-popup-request') || 
+        errorCode.includes('popup-closed-by-user') ||
+        errorCode.includes('popup-blocked') ||
+        errorMessage.includes('cancelled-popup-request') ||
+        errorMessage.includes('popup-closed-by-user') ||
+        errorMessage.includes('popup-blocked') ||
+        errString.includes('cancelled-popup-request');
+
+      if (isCancelled) {
+        return; // Ignore silently
+      }
+
       console.error("Google login failed", error);
       toast.error(error?.message?.includes('permission') 
         ? "فشل تسجيل الدخول: عطل في الأذونات" 
         : "خطأ في تسجيل الدخول عبر جوجل");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -286,16 +311,22 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
       toast.error("يرجى إدخال البريد الإلكتروني أولاً");
       return;
     }
+    if (loading) return;
+    setLoading(true);
     try {
       await sendPasswordResetEmail(auth, email.trim());
       toast.success("تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني");
     } catch (error: any) {
       toast.error("فشل إرسال الرابط، تأكد من صحة البريد الإلكتروني");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    setLoading(true);
     try {
       const additionalData = !isLogin ? { 
         displayName: fullName || username, 
@@ -336,11 +367,20 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
         msg = `خطأ: ${error.code || error.message}`;
       }
       toast.error(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className={`min-h-screen bg-stone-50 text-stone-900 flex flex-col justify-center p-6 font-sans ${lang === 'ar' ? 'font-arabic' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <button 
+        onClick={onBack}
+        className="absolute top-8 left-8 p-4 bg-white rounded-2xl shadow-sm text-stone-400 hover:text-stone-900 transition-all z-20 active:scale-95"
+      >
+        <ChevronLeft size={24} className={lang === 'ar' ? 'rotate-180' : ''} />
+      </button>
+
       <motion.div 
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -435,55 +475,59 @@ const Auth = ({ lang, onAuth }: { lang: Language, onAuth: () => void, key?: stri
             {isLogin && <button type="button" onClick={handleResetPassword} className="text-stone-400 hover:text-stone-600">{t.forgotPass}</button>}
           </div>
 
-          <button className="w-full bg-stone-900 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-stone-800 transition-all flex items-center justify-center gap-3 active:scale-95 text-lg mt-8">
-            {isLogin ? t.login : t.signup}
-            <ChevronRight size={24} className={`${lang === 'ar' ? 'rotate-180' : ''}`} />
-          </button>
-
-          <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-stone-100" />
-            <span className="text-[10px] font-black text-stone-300 uppercase tracking-widest whitespace-nowrap">OR</span>
-            <div className="flex-1 h-px bg-stone-100" />
-          </div>
-
           <button 
-            type="button"
-            onClick={handleGoogleLogin}
-            className="w-full bg-white border-2 border-stone-100 text-stone-700 font-black py-5 rounded-[32px] shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all flex items-center justify-center gap-3 active:scale-95 text-base"
+            disabled={loading}
+            className={`w-full bg-stone-900 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-stone-800 transition-all flex items-center justify-center gap-3 active:scale-95 text-lg mt-8 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <div className="w-8 h-8 bg-stone-50 rounded-xl flex items-center justify-center border border-stone-100">
-               <svg className="w-4 h-4" viewBox="0 0 24 24">
-                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                 <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/>
-                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-               </svg>
-            </div>
-            {t.googleLogin}
+            {isLogin ? (loading ? '...' : t.login) : (loading ? '...' : t.signup)}
+            {!loading && <ChevronRight size={24} className={`${lang === 'ar' ? 'rotate-180' : ''}`} />}
           </button>
-
-          {isLogin && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-8 text-center p-5 bg-orange-50/50 border border-orange-100 rounded-[24px]"
-            >
-              <p className="text-[11px] font-bold text-orange-800 leading-relaxed">
-                {lang === 'ar' 
-                  ? "تنويه: إذا كنت تحاول الدخول بحساب قديم، يرجى الضغط على زر (إنشاء حساب) في الأعلى أولاً، لأننا انتقلنا لنظام أمان حقيقي."
-                  : "Note: If you're trying to log in with an old account, please click (Signup) above first, as we've moved to a real security system."
-                }
-              </p>
-            </motion.div>
-          )}
         </form>
+
+        <div className="flex items-center gap-4 my-6">
+          <div className="flex-1 h-px bg-stone-100" />
+          <span className="text-[10px] font-black text-stone-300 uppercase tracking-widest whitespace-nowrap">OR</span>
+          <div className="flex-1 h-px bg-stone-100" />
+        </div>
+
+        <button 
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className={`w-full bg-white border-2 border-stone-100 text-stone-700 font-black py-5 rounded-[32px] shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all flex items-center justify-center gap-3 active:scale-95 text-base ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <div className="w-8 h-8 bg-stone-50 rounded-xl flex items-center justify-center border border-stone-100">
+             <svg className="w-4 h-4" viewBox="0 0 24 24">
+               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+               <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/>
+               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+             </svg>
+          </div>
+          {t.googleLogin}
+        </button>
+
+        {isLogin && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 text-center p-5 bg-orange-50/50 border border-orange-100 rounded-[24px]"
+          >
+            <p className="text-[11px] font-bold text-orange-800 leading-relaxed">
+              {lang === 'ar' 
+                ? "تنويه: إذا كنت تحاول الدخول بحساب قديم، يرجى الضغط على زر (إنشاء حساب) في الأعلى أولاً، لأننا انتقلنا لنظام أمان حقيقي."
+                : "Note: If you're trying to log in with an old account, please click (Signup) above first, as we've moved to a real security system."
+              }
+            </p>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );
 };
 
 const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () => void, profile: UserProfile | null, key?: string }) => {
-  const t = TRANSLATIONS[lang];
+  const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
   const [view, setView] = useState<'home' | 'users' | 'communities' | 'messages' | 'requests' | 'profile' | 'admin' | 'marketplace'>('home');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [activeChat, setActiveChat] = useState<UserProfile | null>(null);
@@ -584,13 +628,15 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
     return () => window.removeEventListener('unhandledrejection', handleRejection);
   }, []);
 
-  const SidebarItem = ({ id, icon: Icon, label }: { id: typeof view, icon: any, label: string }) => (
+  const SidebarItem: React.FC<{ id: typeof view, icon: any, label: string }> = ({ id, icon: Icon, label }) => (
     <button 
       onClick={() => { setView(id); setSelectedUser(null); }}
-      className={`w-full flex items-center gap-4 px-6 py-4 rounded-[24px] transition-all group ${view === id ? 'bg-brand-green text-white shadow-xl' : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600'}`}
+      className={`w-full flex items-center gap-4 px-6 py-4 rounded-[28px] transition-all group ${view === id ? 'bg-brand-green text-white shadow-material-mid' : 'text-stone-400 hover:bg-stone-50 hover:text-stone-700'}`}
     >
-      <Icon size={22} className={`${view === id ? 'scale-110' : 'group-hover:scale-110'} transition-transform`} />
-      <span className="text-sm font-black uppercase tracking-widest">{label}</span>
+      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${view === id ? 'bg-white/20' : 'bg-transparent group-hover:bg-stone-100'}`}>
+        <Icon size={20} className={`${view === id ? 'scale-110 active:scale-90' : 'group-hover:scale-110'} transition-transform`} />
+      </div>
+      <span className="text-[11px] font-black uppercase tracking-[0.15em]">{label}</span>
     </button>
   );
 
@@ -600,40 +646,49 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
     return <CallOverlay call={activeCall} onEnd={() => { endCall(activeCall.id); setActiveCall(null); }} />;
   }, [activeCall]);
 
+  const navItems = [
+    { id: 'home', icon: Sprout, label: t.home },
+    { id: 'marketplace', icon: Store, label: t.marketplace },
+    { id: 'communities', icon: Hash, label: t.communities },
+    { id: 'messages', icon: MessageSquare, label: t.messages },
+    { id: 'requests', icon: Calendar, label: t.consultations },
+    { id: 'profile', icon: User, label: t.profile },
+    ...(profile?.role === 'admin' ? [{ id: 'admin', icon: ShieldAlert, label: "Admin" }] : [])
+  ];
+
   return (
-    <div className={`min-h-screen bg-stone-50 flex font-sans selection:bg-brand-green/30 ${lang === 'ar' ? 'font-arabic' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen bg-bg-light flex font-sans selection:bg-brand-green/30 ${lang === 'ar' ? 'font-arabic' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 bg-white border-r border-stone-100 flex-col p-8 sticky top-0 h-screen overflow-y-auto">
-        <div className="mb-12 px-2">
-           <AgroLogo size={40} />
+      <aside className="hidden lg:flex w-80 bg-white border-r border-stone-100 flex-col p-10 sticky top-0 h-screen overflow-y-auto">
+        <div className="mb-14 flex items-center gap-4">
+           <AgroLogo size={42} />
+           <div className="space-y-0.5">
+             <h1 className="text-xl font-black tracking-tighter text-stone-900">AgroLife</h1>
+             <p className="text-[8px] font-black uppercase tracking-[0.3em] text-brand-green">Ecosystem</p>
+           </div>
         </div>
 
-        <div className="space-y-2 flex-1">
-          <SidebarItem id="home" icon={Sprout} label={t.home} />
-          <SidebarItem id="users" icon={Users} label={t.experts} />
-          <SidebarItem id="marketplace" icon={Store} label={t.marketplace} />
-          <SidebarItem id="communities" icon={Hash} label={t.communities} />
-          <SidebarItem id="messages" icon={MessageSquare} label={t.messages} />
-          <SidebarItem id="requests" icon={Calendar} label={t.consultations} />
-          {profile?.role === 'admin' && <SidebarItem id="admin" icon={ShieldAlert} label="Admin" />}
-          <SidebarItem id="profile" icon={User} label={t.profile} />
-          <div className="px-6 py-2">
+        <div className="space-y-3 flex-1">
+          {navItems.map(item => (
+            <SidebarItem key={item.id} id={item.id as any} icon={item.icon} label={item.label} />
+          ))}
+          <div className="pt-4 border-t border-stone-50 mt-4 px-2">
             <NotificationBell />
           </div>
         </div>
 
-        <div className="mt-auto space-y-2">
+        <div className="mt-auto space-y-4 pt-10">
           <button 
             onClick={() => setView('profile')}
-            className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all group ${view === 'profile' ? 'bg-stone-100 text-stone-900 font-black' : 'text-stone-400 hover:bg-stone-50 hover:text-stone-600'}`}
+            className="w-full flex items-center gap-4 px-6 py-4 rounded-[28px] border border-stone-100 text-stone-400 hover:text-stone-900 transition-all group"
           >
-            <Settings2 size={20} className="group-hover:rotate-45 transition-transform duration-500" />
-            <span className="text-xs uppercase tracking-widest">{lang === 'ar' ? 'الإعدادات' : 'Settings'}</span>
+            <Settings2 size={18} className="group-hover:rotate-90 transition-transform duration-700" />
+            <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'ar' ? 'الإعدادات' : 'Settings'}</span>
           </button>
           
-          <button onClick={onLogout} className="w-full flex items-center gap-4 px-6 py-4 text-rose-500 font-black hover:bg-rose-50 rounded-2xl transition-all">
-            <LogOut size={20} />
-            <span className="text-xs uppercase tracking-widest">{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</span>
+          <button onClick={onLogout} className="w-full flex items-center gap-4 px-6 py-4 text-rose-500 font-black hover:bg-rose-50 rounded-[28px] transition-all">
+            <LogOut size={18} />
+            <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</span>
           </button>
         </div>
       </aside>
@@ -641,21 +696,35 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
       {/* Main Area */}
       <div className="flex-1 flex flex-col relative min-h-screen">
         {/* Dynamic Mobile Header */}
-        <header className="lg:hidden h-20 bg-white/80 backdrop-blur-3xl border-b border-stone-100 px-6 flex items-center justify-between sticky top-0 z-40">
-           <AgroLogo size={32} />
+        <header className="lg:hidden h-24 bg-white/80 backdrop-blur-3xl border-b border-stone-50 px-8 flex items-center justify-between sticky top-0 z-40">
            <div className="flex items-center gap-4">
+              {view !== 'home' ? (
+                <button 
+                  onClick={() => { setView('home'); setSelectedUser(null); }}
+                  className="w-12 h-12 bg-stone-50 text-stone-900 rounded-2xl flex items-center justify-center active:scale-90 transition-all shadow-sm"
+                >
+                  <ChevronLeft size={24} className={lang === 'ar' ? 'rotate-180' : ''} />
+                </button>
+              ) : (
+                <>
+                  <AgroLogo size={36} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-300">AgroLife</p>
+                </>
+              )}
+           </div>
+           <div className="flex items-center gap-6">
              <NotificationBell />
-             <button onClick={() => setView('profile')} className="w-10 h-10 rounded-full border-2 border-stone-100 overflow-hidden">
-               <img src={profile?.photoURL || "https://picsum.photos/seed/farmer/100"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+             <button onClick={() => setView('profile')} className="w-12 h-12 rounded-[20px] border-2 border-stone-100 p-0.5 shadow-sm active:scale-95 transition-all">
+               <img src={profile?.photoURL || "https://picsum.photos/seed/farmer/100"} className="w-full h-full object-cover rounded-[18px]" referrerPolicy="no-referrer" />
              </button>
            </div>
         </header>
 
-        <main className="flex-1 p-6 lg:p-12 overflow-y-auto max-w-5xl mx-auto w-full pb-32 lg:pb-12">
+        <main className="flex-1 p-6 lg:p-14 overflow-y-auto max-w-6xl mx-auto w-full pb-48 lg:pb-14">
           <AnimatePresence mode="wait">
-            {view === 'home' && <RenderHome profile={profile} openProfile={openProfile} weather={weather} weatherLoading={weatherLoading} setView={setView} />}
+            {view === 'home' && <RenderHome profile={profile} openProfile={openProfile} weather={weather} weatherLoading={weatherLoading} setView={setView} lang={lang} />}
             {view === 'users' && <RenderUsers openProfile={openProfile} myUid={profile?.uid || ''} profile={profile} />}
-            {view === 'marketplace' && <RenderMarketplace profile={profile} onAddToCart={(p) => {
+            {view === 'marketplace' && <RenderMarketplace lang={lang} profile={profile} onAddToCart={(p) => {
                setCart(prev => {
                  const existing = prev.find(item => item.product.id === p.id);
                  if (existing) return prev.map(item => item.product.id === p.id ? { ...item, quantity: item.quantity + 1 } : item);
@@ -663,8 +732,8 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
                });
                setShowCart(true);
             }} />}
-            {view === 'communities' && <RenderCommunities openProfile={openProfile} userProfile={profile} />}
-            {view === 'messages' && profile && <RenderMessages myUid={profile.uid} activeChat={activeChat} setActiveChat={setActiveChat} openProfile={openProfile} />}
+            {view === 'communities' && <RenderCommunities openProfile={openProfile} userProfile={profile} lang={lang} />}
+            {view === 'messages' && profile && <RenderMessages myUid={profile.uid} lang={lang} activeChat={activeChat} setActiveChat={setActiveChat} openProfile={openProfile} />}
             {view === 'requests' && <RenderRequests profile={profile} openProfile={openProfile} />}
             {view === 'admin' && <RenderAdmin />}
             {view === 'profile' && <RenderProfile profile={profile} onLogout={onLogout} />}
@@ -674,6 +743,7 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
             {showCart && (
               <CartModal 
                 cart={cart} 
+                lang={lang}
                 onClose={() => setShowCart(false)} 
                 onUpdateQuantity={(pid, q) => setCart(prev => q === 0 ? prev.filter(i => i.product.id !== pid) : prev.map(i => i.product.id === pid ? { ...i, quantity: q } : i))}
                 onCheckout={async (address) => {
@@ -688,42 +758,41 @@ const Dashboard = ({ lang, onLogout, profile }: { lang: Language, onLogout: () =
                    });
                    setCart([]);
                    setShowCart(false);
-                   // toast success here would be good but I'll add it in CartModal
                 }}
               />
             )}
           </AnimatePresence>
         </main>
 
+        {/* Floating Action Button (AI Assistant) */}
+        {!showAI && (
+          <button 
+            onClick={() => setShowAI(true)}
+            className="fixed bottom-32 right-8 w-16 h-16 bg-stone-900 text-brand-green rounded-[24px] shadow-material-high flex items-center justify-center group active:scale-90 transition-all z-40 lg:hidden"
+          >
+            <Sparkles size={28} className="group-hover:rotate-12 transition-transform" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-brand-green rounded-full border-4 border-white animate-ping" />
+          </button>
+        )}
+
         {/* Mobile Navigation Dock */}
-        <nav className="lg:hidden fixed bottom-8 left-6 right-6 bg-stone-900/90 backdrop-blur-3xl border border-white/20 p-2 rounded-[36px] flex items-center justify-between z-40 shadow-2xl">
-          {[
-            { id: 'home', icon: Sprout },
-            { id: 'marketplace', icon: Store },
-            { id: 'communities', icon: Hash },
-            { id: 'messages', icon: MessageSquare },
-            { id: 'requests', icon: Calendar },
-            { id: 'profile', icon: User },
-            ...(profile?.role === 'admin' ? [{ id: 'admin', icon: ShieldAlert }] : [])
-          ].map(item => (
+        <nav className="lg:hidden fixed bottom-10 left-6 right-6 glass-pill p-2 flex items-center justify-around z-40">
+          {navItems.slice(0, 5).map(item => (
             <button 
               key={item.id}
               onClick={() => { setView(item.id as any); setSelectedUser(null); }}
-              className={`p-3.5 transition-all ${view === item.id ? 'text-brand-green scale-110' : 'text-stone-500'}`}
+              className={`flex flex-col items-center gap-1.5 p-3 px-5 rounded-[24px] transition-all ${view === item.id ? 'bg-brand-green text-white shadow-material-mid scale-105' : 'text-stone-400 active:scale-95'}`}
             >
-              <item.icon size={22} />
+              <item.icon size={20} />
             </button>
           ))}
+          <button 
+              onClick={() => { setView('profile'); setSelectedUser(null); }}
+              className={`flex flex-col items-center gap-1.5 p-3 px-5 rounded-[24px] transition-all ${view === 'profile' ? 'bg-brand-green text-white shadow-material-mid scale-105' : 'text-stone-400 active:scale-95'}`}
+            >
+              <User size={20} />
+          </button>
         </nav>
-
-        {/* Floating AI Button */}
-        <motion.button
-          whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-          onClick={() => setShowAI(true)}
-          className="fixed bottom-32 right-8 lg:bottom-12 lg:right-12 w-16 h-16 bg-brand-green text-white rounded-[24px] shadow-2xl z-50 flex items-center justify-center border-4 border-white"
-        >
-          <Bot size={34} />
-        </motion.button>
       </div>
 
       {/* Overlays */}
@@ -1058,11 +1127,10 @@ const UserProfileModal = ({ user, myUid, profile, onClose, onMessage, setActiveC
   );
 };
 
-const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: (v: string) => void }) => {
+const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView, lang }: { profile: UserProfile | null, openProfile: (uid: string) => any, weather: WeatherData | null, weatherLoading: boolean, setView: (v: string) => void, lang: Language }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const isExpert = profile?.role !== 'farmer' && profile?.role !== 'admin';
-  const currentTime = new Date().toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
-  const currentDate = new Date().toLocaleDateString('ar-DZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
+  const currentTime = new Date().toLocaleTimeString(lang === 'ar' ? 'ar-DZ' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 
   useEffect(() => {
     if (profile?.uid) {
@@ -1080,183 +1148,180 @@ const RenderHome = ({ profile, openProfile, weather, weatherLoading, setView }: 
   }, [profile]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-12 pb-24" dir="rtl">
-      <header className="flex flex-col gap-2">
-        <div className="flex justify-between items-start">
-           <div>
-              <h1 className="text-4xl lg:text-5xl font-black text-stone-900 tracking-tighter">
-                مرحباً <span className="text-brand-green">{profile?.displayName?.split(' ')[0] || 'بالعضو'}!</span>
-              </h1>
-              <div className="flex items-center gap-2 mt-2">
-                <MapPin size={14} className="text-stone-400" />
-                <span className="text-xs font-black text-stone-400 uppercase tracking-widest">{profile?.wilaya || 'في الجزائر'}</span>
-              </div>
+    <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="space-y-10 pb-12" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      {/* Dynamic Header */}
+      <header className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl lg:text-5xl font-black text-stone-900 tracking-tighter">
+            {lang === 'ar' ? 'أهلاً بك،' : 'Good Day,'} <span className="text-brand-green">{profile?.displayName?.split(' ')[0] || (lang === 'ar' ? 'صديقنا' : 'Farmer')}</span>
+          </h1>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-brand-green rounded-full animate-pulse" />
+            <span className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">{profile?.wilaya || 'Algeria'} • {currentTime}</span>
+          </div>
+        </div>
+        <div className="hidden lg:flex items-center gap-4">
+           <div className="text-right">
+             <p className="text-sm font-black text-stone-900 leading-tight">AgroLife Prime</p>
+             <p className="text-[10px] font-bold text-stone-400 uppercase">Expert Member</p>
            </div>
-           <div className="text-left bg-stone-100 px-4 py-2 rounded-2xl">
-              <p className="text-lg font-black text-stone-900 leading-none">{currentTime}</p>
-              <p className="text-[9px] font-black text-stone-400 mt-1 uppercase tracking-tighter">{currentDate}</p>
-           </div>
+           <Award className="text-brand-green" size={28} />
         </div>
       </header>
 
-      {/* Weather and Local Conditions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         <div className="bg-brand-blue rounded-[40px] p-8 text-white shadow-2xl shadow-brand-blue/20 flex flex-col gap-8 relative overflow-hidden group min-h-[220px]">
-            {weatherLoading ? (
-               <div className="absolute inset-0 flex items-center justify-center bg-brand-blue/50 backdrop-blur-sm z-10">
-                 <Activity size={32} className="animate-spin" />
+      {/* Quick Action Hub - Thumb Friendly */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {[
+          { id: 'users', icon: UserSearch, label: t.experts, color: 'bg-emerald-50 text-brand-green', desc: 'Book Now' },
+          { id: 'marketplace', icon: ShoppingBag, label: t.marketplace, color: 'bg-blue-50 text-blue-600', desc: 'Shop Deals' },
+          { id: 'communities', icon: Users2, label: t.communities, color: 'bg-amber-50 text-amber-600', desc: 'Join Talk' },
+          { id: 'requests', icon: LayoutList, label: t.consultations, color: 'bg-stone-100 text-stone-600', desc: 'View All' }
+        ].map((act) => (
+          <button 
+            key={act.id}
+            onClick={() => setView(act.id)}
+            className="material-card p-6 flex flex-col gap-6 text-right active:scale-95 group"
+          >
+            <div className={`w-14 h-14 rounded-[20px] flex items-center justify-center transition-transform group-hover:rotate-12 ${act.color}`}>
+              <act.icon size={26} />
+            </div>
+            <div>
+              <p className="text-sm font-black text-stone-900 leading-tight mb-1">{act.label}</p>
+              <p className="text-[9px] font-black text-stone-300 uppercase tracking-widest">{act.desc}</p>
+            </div>
+          </button>
+        ))}
+      </section>
+
+      {/* Main Insights Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        {/* Weather Intelligence Card */}
+        <div className="lg:col-span-8 overflow-hidden group">
+          <div className="h-full bg-brand-green rounded-[48px] p-8 lg:p-12 text-white shadow-material-mid relative flex flex-col justify-between min-h-[300px]">
+            {/* Background Texture */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-400/20 rounded-full -ml-32 -mb-32 blur-2xl" />
+            
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8 h-full">
+               <div className="space-y-6">
+                 <div>
+                   <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60 mb-2">Current Intelligence</p>
+                   <h2 className="text-6xl font-black tracking-tighter">
+                     {weatherLoading ? '--' : weather ? `${weather.temp}°C` : 'N/A'}
+                   </h2>
+                 </div>
+                 
+                 <div className="flex gap-8">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Humidity</p>
+                      <p className="text-xl font-black">{weather?.humidity || '0'}%</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Wind Speed</p>
+                      <p className="text-xl font-black">{weather?.windSpeed || '0'} km/h</p>
+                    </div>
+                 </div>
                </div>
-            ) : weather ? (
-              <div className="flex-1 flex flex-col justify-between h-full">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-3xl group-hover:scale-150 transition-transform" />
-                <div className="flex items-center justify-between relative z-10">
-                  <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
-                    {weather.condition.toLowerCase().includes('rain') ? <CloudRain size={32} /> : weather.condition.toLowerCase().includes('cloud') ? <Cloud size={32} /> : <Sun size={32} />}
+
+               <div className="flex flex-col gap-4 items-center">
+                  <div className="w-32 h-32 bg-white/20 rounded-[40px] flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20">
+                    {weatherLoading ? <Activity className="animate-spin" /> : <Sun size={64} className="text-amber-300 drop-shadow-lg" />}
                   </div>
-                  <div className="text-left">
-                    <p className="text-4xl font-black">{weather.temp}°C</p>
-                    <p className="text-xs font-black uppercase tracking-widest opacity-60">حالة الطقس</p>
+                  <div className="bg-white px-6 py-2 rounded-full text-brand-green text-[10px] font-black uppercase tracking-widest shadow-lg">
+                    {weather?.condition || 'Analyzing...'}
                   </div>
-                </div>
-                <div className="relative z-10 space-y-4">
-                  <div className="flex gap-6">
-                    <div className="flex items-center gap-2">
-                      <Droplets size={16} />
-                      <span className="text-xs font-bold">{weather.humidity}% رطوبة</span>
+               </div>
+
+               <div className="md:absolute md:bottom-0 md:left-0 md:right-0 mt-8 md:mt-0 flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                  <div className="flex-1 bg-white/20 backdrop-blur-md p-6 rounded-[32px] border border-white/10 shadow-sm flex items-center gap-4 min-w-[280px]">
+                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-brand-green shadow-inner">
+                      <Zap size={22} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <WindIcon size={16} />
-                      <span className="text-xs font-bold">{weather.windSpeed} كم/س</span>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Recommendation</p>
+                      <p className="text-sm font-bold leading-tight line-clamp-2">
+                        {weather && weather.temp > 30 ? "High temp risk. Focus on irrigation." : "Ideal planting window detected today."}
+                      </p>
                     </div>
                   </div>
-                  <div className="bg-white/10 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1 leading-none">توصية اليوم</p>
-                    <p className="text-sm font-bold leading-tight">
-                      {weather.temp > 30 ? "الحرارة مرتفعة، ينصح بالري المسائي." : "درجة حرارة مثالية للغراسة وتفقد المحاصيل."}
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Next Appointment Card */}
+        <div className="lg:col-span-4 flex flex-col gap-4">
+           <h3 className="text-sm font-black text-stone-400 uppercase tracking-widest px-4">{t.consultations}</h3>
+           <div className="flex-1 material-card p-8 flex flex-col justify-between gap-8 group">
+              {bookings.length > 0 ? (
+                <div className="space-y-8 flex flex-col h-full">
+                  <div className="flex items-center justify-between">
+                    <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center text-brand-green shadow-inner group-hover:scale-110 transition-transform">
+                      <Clock size={28} />
+                    </div>
+                    <div className="text-right">
+                       <p className="text-xs font-black text-stone-900">{bookings[0].timeSlot}</p>
+                       <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">{bookings[0].date}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-stone-50 p-6 rounded-[32px] border border-stone-100 flex-1 flex flex-col justify-center">
+                    <p className="text-[9px] font-black text-stone-400 uppercase tracking-widest mb-3">{profile?.role === 'farmer' ? 'Expert Name' : 'Farmer Name'}</p>
+                    <p className="text-lg font-black text-stone-900 leading-tight">
+                      {profile?.role === 'farmer' ? (bookings[0].expertName || 'Expert') : (bookings[0].userName || 'Member')}
                     </p>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                      <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Confirmed Session</span>
+                    </div>
                   </div>
+
+                  <button 
+                    onClick={() => setView('requests')}
+                    className="w-full py-4 bg-stone-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all"
+                  >
+                    Manage Visits
+                  </button>
                 </div>
-              </div>
-            ) : (
-               <div className="flex-1 flex flex-col items-center justify-center text-white/40 gap-3">
-                 <Cloud size={48} />
-                 <p className="text-xs font-black uppercase tracking-widest">خدمات الطقس غير متصلة</p>
-               </div>
-            )}
-         </div>
-
-         <div className="bg-white rounded-[40px] p-8 border border-stone-100 shadow-sm flex flex-col gap-6 min-h-[220px]">
-            <div className="flex items-center justify-between">
-              <div className="bg-brand-green/10 p-4 rounded-2xl text-brand-green">
-                <Calendar size={28} />
-              </div>
-              <span className="text-[10px] font-black text-stone-300 uppercase tracking-widest">المواعيد القادمة</span>
-            </div>
-            <div className="flex-1 space-y-4">
-               {bookings.length > 0 ? bookings.map(b => (
-                 <div key={b.id} className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-3">
-                    <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3">
-                          <Clock size={14} className="text-brand-green" />
-                          <span className="text-xs font-bold text-stone-700">{b.timeSlot}</span>
-                          <span className="text-stone-300 mx-1">|</span>
-                          <Calendar size={12} className="text-stone-400" />
-                          <span className="text-[10px] font-bold text-stone-400">{b.date}</span>
-                       </div>
-                       <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${b.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{b.status === 'confirmed' ? 'مؤكد' : 'قيد الانتظار'}</span>
-                    </div>
-                    <div className="h-px bg-stone-200/50 w-full" />
-                    <div className="flex flex-col gap-1">
-                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest leading-none">
-                         {profile?.role === 'farmer' ? "موعد مع الخبير:" : "استشارة لـ:"}
-                       </p>
-                       <p className="text-sm font-black text-stone-900 leading-tight">
-                         {profile?.role === 'farmer' ? (b.expertName || 'خبير AgroLife') : (b.userName || 'فلاح')}
-                       </p>
-                       {b.topic && <p className="text-[10px] font-medium text-stone-500 line-clamp-1 mt-1 italic opacity-80">"{b.topic}"</p>}
-                    </div>
-                 </div>
-               )) : (
-                 <div className="text-center py-6 text-stone-300">
-                   <p className="text-xs font-black uppercase tracking-widest">لا توجد مواعيد محجوزة</p>
-                 </div>
-               )}
-            </div>
-         </div>
-      </div>
-
-      {/* Algeria Specific Agriculture & Livestock Insights */}
-      <div className="space-y-8">
-        <div className="flex items-center justify-between border-r-4 border-brand-green pr-4">
-           <div>
-             <h3 className="text-2xl font-black text-stone-900 tracking-tighter">ثقافة فلاحية جزائرية</h3>
-             <p className="text-stone-400 text-xs font-bold">معلومات وخدمات مجانية لكافة فلاحي الوطن</p>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+                  <div className="w-16 h-16 bg-stone-50 rounded-3xl flex items-center justify-center text-stone-200">
+                    <Calendar size={32} />
+                  </div>
+                  <p className="text-xs font-black text-stone-300 uppercase tracking-widest leading-relaxed">No sessions found.<br/>Start booking now.</p>
+                  <button onClick={() => setView('users')} className="text-[10px] font-black text-brand-green border-b-2 border-brand-green/20 pb-1 uppercase tracking-widest pt-4">Explore Experts</button>
+                </div>
+              )}
            </div>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Crop Insights */}
-          <div className="space-y-4">
-             <h4 className="text-lg font-black text-stone-700 flex items-center gap-2">
-               <div className="w-8 h-8 rounded-lg bg-emerald-50 text-brand-green flex items-center justify-center"><Leaf size={16}/></div>
-               زراعة حقلية
-             </h4>
-             <div className="grid gap-3">
-                {ALGERIA_CROP_INFO.map((crop, i) => (
-                  <div key={i} className="p-5 bg-white border border-stone-100 rounded-3xl group hover:shadow-xl hover:shadow-stone-200/50 transition-all">
-                     <div className="flex justify-between items-start mb-2">
-                        <p className="font-black text-stone-900">{crop.title}</p>
-                        <span className="bg-stone-50 text-[9px] font-black text-stone-400 px-3 py-1 rounded-full">{crop.region}</span>
-                     </div>
-                     <p className="text-xs text-stone-500 leading-relaxed font-medium">{crop.tips}</p>
-                  </div>
-                ))}
-             </div>
-          </div>
-
-          {/* Livestock Insights */}
-          <div className="space-y-4">
-             <h4 className="text-lg font-black text-stone-700 flex items-center gap-2">
-               <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center"><Activity size={16}/></div>
-               ثروة حيوانية
-             </h4>
-             <div className="grid gap-3">
-                {ALGERIA_LIVESTOCK_INFO.map((beast, i) => (
-                  <div key={i} className="p-5 bg-white border border-stone-100 rounded-3xl group hover:shadow-xl hover:shadow-stone-200/50 transition-all">
-                     <div className="flex justify-between items-start mb-2">
-                        <p className="font-black text-stone-900">{beast.title}</p>
-                        <span className="bg-stone-50 text-[9px] font-black text-stone-400 px-3 py-1 rounded-full">{beast.focus}</span>
-                     </div>
-                     <p className="text-xs text-stone-500 leading-relaxed font-medium">{beast.tips}</p>
-                  </div>
-                ))}
-             </div>
-          </div>
-        </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-           <h3 className="text-2xl font-black text-stone-900 tracking-tighter">خبراء معتمدون</h3>
-           <button 
-             onClick={() => setView('experts')}
-             className="text-brand-green font-black text-xs uppercase tracking-widest hover:underline"
-           >
-             استكشاف الكل
-           </button>
+      {/* Algerian Heritage Section */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between">
+           <h3 className="text-xl font-black text-stone-900 tracking-tight">Agricultural Intelligence</h3>
+           <div className="h-0.5 flex-1 bg-stone-100 mx-6 rounded-full" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {EXPERTS.slice(0, 4).map(exp => (
-            <button key={exp.id} onClick={() => openProfile(exp.id)} className="bg-white p-6 rounded-[32px] border border-stone-100 hover:border-brand-green hover:shadow-2xl hover:shadow-brand-green/10 transition-all text-center space-y-4 group">
-               <img src={exp.image} className="w-20 h-20 rounded-[28px] mx-auto object-cover grayscale group-hover:grayscale-0 transition-all border-2 border-stone-50" referrerPolicy="no-referrer" />
-               <div>
-                 <p className="font-black text-stone-900 text-sm truncate">{exp.name}</p>
-                 <p className="text-[9px] font-black text-stone-400 uppercase tracking-widest mt-1">خبير مسجل</p>
-               </div>
-            </button>
-          ))}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+           {ALGERIA_CROP_INFO.slice(0, 3).map((item, i) => (
+             <div key={i} className="material-card p-8 group">
+                <div className="flex items-center justify-between mb-8">
+                   <div className="p-3 bg-brand-light-green text-brand-green rounded-xl group-hover:scale-110 transition-transform">
+                     <Sprout size={18} />
+                   </div>
+                   <span className="text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1 bg-stone-50 rounded-full text-stone-400">{item.region}</span>
+                </div>
+                <h4 className="text-md font-black text-stone-900 mb-3">{item.title}</h4>
+                <p className="text-[11px] text-stone-500 leading-relaxed font-medium line-clamp-3 italic opacity-80">"{item.tips}"</p>
+                <div className="mt-8 pt-6 border-t border-stone-50 flex items-center justify-between">
+                   <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Seasonal Data</p>
+                   <ArrowRight size={14} className="text-stone-300 group-hover:translate-x-1 transition-transform" />
+                </div>
+             </div>
+           ))}
         </div>
-      </div>
+      </section>
     </motion.div>
   );
 };
@@ -1401,7 +1466,7 @@ const RenderUsers = ({ openProfile, myUid, profile }: { openProfile: (uid: strin
   );
 };
 
-const RenderMessages = ({ activeChat, setActiveChat, openProfile, myUid }: { activeChat: UserProfile | null, setActiveChat: (u: UserProfile | null) => void, openProfile: (uid: string) => any, myUid: string }) => {
+const RenderMessages = ({ activeChat, setActiveChat, openProfile, myUid, lang }: { activeChat: UserProfile | null, setActiveChat: (u: UserProfile | null) => void, openProfile: (uid: string) => any, myUid: string, lang: Language }) => {
   const [msgInput, setMsgInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -1489,18 +1554,18 @@ const RenderMessages = ({ activeChat, setActiveChat, openProfile, myUid }: { act
   if (activeChat) {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="h-full flex flex-col bg-white rounded-[48px] shadow-2xl border border-stone-100 overflow-hidden min-h-[70vh]">
-        <header className="p-8 border-b flex items-center justify-between bg-stone-50">
-          <div className="flex items-center gap-4 cursor-pointer" onClick={() => openProfile(activeChat.uid)}>
-            <img src={activeChat.photoURL || `https://picsum.photos/seed/${activeChat.uid}/100`} className="w-14 h-14 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+        <header className="p-4 lg:p-8 border-b flex items-center justify-between bg-stone-50">
+          <div className="flex items-center gap-3 lg:gap-4 cursor-pointer" onClick={() => openProfile(activeChat.uid)}>
+            <img src={activeChat.photoURL || `https://picsum.photos/seed/${activeChat.uid}/100`} className="w-12 h-12 lg:w-14 lg:h-14 rounded-2xl object-cover" referrerPolicy="no-referrer" />
             <div>
-              <h4 className="font-black text-lg text-stone-900">{activeChat.displayName}</h4>
-              <span className="text-[10px] font-black text-brand-green uppercase tracking-[0.2em] flex items-center gap-2">
+              <h4 className="font-black text-base lg:text-lg text-stone-900 leading-tight">{activeChat.displayName}</h4>
+              <span className="text-[9px] lg:text-[10px] font-black text-brand-green uppercase tracking-[0.2em] flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-brand-green rounded-full animate-pulse" />
                 Expert Online
               </span>
             </div>
           </div>
-          <button onClick={() => setActiveChat(null)} className="p-4 rounded-2xl bg-white border border-stone-100 text-stone-300 hover:text-stone-900 transition-all"><LogOut size={24} className="rotate-90" /></button>
+          <button onClick={() => setActiveChat(null)} className="p-3 lg:p-4 rounded-2xl bg-white border border-stone-100 text-stone-300 hover:text-stone-900 transition-all"><ChevronLeft size={24} className={`${lang === 'ar' ? 'rotate-180' : ''} lg:scale-110`} /></button>
         </header>
 
         <div className="flex-1 p-8 space-y-6 overflow-y-auto bg-stone-50/50 flex flex-col">
@@ -1530,25 +1595,45 @@ const RenderMessages = ({ activeChat, setActiveChat, openProfile, myUid }: { act
           )}
         </div>
 
-        <div className="p-6 bg-white border-t flex items-center gap-4">
-           {isRecording ? (
-             <button onClick={stopRecording} className="p-5 bg-red-50 text-red-500 rounded-2xl animate-pulse shadow-lg"><Activity size={24} /></button>
-           ) : (
-             <button onClick={startRecording} className="p-5 bg-stone-50 rounded-2xl text-stone-400 hover:text-brand-green transition-all shadow-sm"><Mic size={24} /></button>
-           )}
-           
-           <label className="cursor-pointer p-5 bg-stone-50 rounded-2xl text-stone-400 hover:text-brand-green transition-all shadow-sm">
-             <Image size={24} />
-             <input type="file" accept="image/*" className="hidden" onChange={handleImageUploadLocal} />
-           </label>
-
-           <input 
-             value={msgInput} onChange={(e) => setMsgInput(e.target.value)}
-             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-             className="flex-1 p-6 bg-stone-50 border-2 border-stone-100 rounded-[28px] outline-none focus:border-brand-green text-sm font-bold shadow-inner" 
-             placeholder="Type your message..."
-           />
-           <button onClick={handleSend} className="bg-stone-900 text-white p-6 rounded-[28px] shadow-2xl active:scale-95 transition-all text-brand-green"><Send size={24} /></button>
+        <div className="p-4 lg:p-6 bg-white border-t flex flex-col gap-4">
+           <div className="flex items-center gap-2 lg:gap-4">
+              {!isRecording && (
+                <label className="cursor-pointer p-3 lg:p-5 bg-stone-50 rounded-2xl text-stone-400 hover:text-brand-green transition-all shadow-sm">
+                   <Image size={20} />
+                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUploadLocal} />
+                </label>
+              )}
+              
+              <div className="flex-1 relative flex items-center gap-2">
+                 <input 
+                   value={msgInput} onChange={(e) => setMsgInput(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                   className="flex-1 p-4 lg:p-6 bg-stone-50 border-2 border-stone-100 rounded-[20px] lg:rounded-[28px] outline-none focus:border-brand-green text-sm font-bold shadow-inner" 
+                   placeholder={lang === 'ar' ? 'اكتب رسالتك...' : 'Type message...'}
+                 />
+                 
+                 <div className="flex items-center gap-2">
+                    {msgInput.trim() ? (
+                      <button onClick={handleSend} className="px-6 lg:px-8 py-4 lg:py-5 bg-brand-green text-white rounded-2xl shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'ar' ? 'إرسال' : 'Send'}</span>
+                        <Send size={18} />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {isRecording ? (
+                          <button onClick={stopRecording} className="p-4 lg:p-5 bg-red-50 text-red-500 rounded-2xl animate-pulse shadow-lg"><Activity size={20} /></button>
+                        ) : (
+                          <button onClick={startRecording} className="p-4 lg:p-5 bg-stone-50 rounded-2xl text-stone-400 hover:text-brand-green transition-all shadow-sm"><Mic size={20} /></button>
+                        )}
+                        <button disabled className="opacity-30 px-6 lg:px-8 py-4 lg:py-5 bg-stone-200 text-stone-500 rounded-2xl flex items-center gap-2 cursor-not-allowed">
+                           <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'ar' ? 'إرسال' : 'Send'}</span>
+                           <Send size={18} />
+                        </button>
+                      </div>
+                    )}
+                 </div>
+              </div>
+           </div>
         </div>
       </motion.div>
     );
@@ -1707,13 +1792,13 @@ const RenderRequests = ({ profile }: { profile: UserProfile | null, openProfile:
   );
 };
 
-const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: string) => any, userProfile: UserProfile | null }) => {
+const RenderCommunities = ({ openProfile, userProfile, lang }: { openProfile: (uid: string) => any, userProfile: UserProfile | null, lang: Language }) => {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [selectedComm, setSelectedComm] = useState<Community | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', description: '', type: 'crop' as 'crop' | 'livestock' | 'topic' });
+  const [newGroup, setNewGroup] = useState({ name: '', description: '', type: 'topic' as 'crop' | 'livestock' | 'topic' });
   const [newPost, setNewPost] = useState({ title: '', content: '' });
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -1736,7 +1821,6 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
       const fetchedPosts = snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityPost));
       setPosts(fetchedPosts);
       
-      // Check likes for current user
       if (userProfile) {
         const likesMap: Record<string, boolean> = {};
         for (const post of fetchedPosts) {
@@ -1751,27 +1835,27 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
 
   const handleCreateGroup = async () => {
     if (!userProfile) return;
-    if (!newGroup.name || !newGroup.description) return toast.error("يرجى ملء جميع الخانات");
+    if (!newGroup.name || !newGroup.description) return toast.error(lang === 'ar' ? "يرجى ملء جميع الخانات" : "Please fill all fields");
     try {
       await createCommunity({ ...newGroup, creatorId: userProfile.uid });
       setShowCreateGroup(false);
-      setNewGroup({ name: '', description: '', type: 'crop' });
-      toast.success("تم إنشاء المجموعة بنجاح");
+      setNewGroup({ name: '', description: '', type: 'topic' });
+      toast.success(lang === 'ar' ? "تم إنشاء المجموعة بنجاح" : "Community created successfully");
     } catch (err) {
-      toast.error("فشل إنشاء المجموعة");
+      toast.error(lang === 'ar' ? "فشل إنشاء المجموعة" : "Failed to create community");
     }
   };
 
   const handleCreatePost = async () => {
     if (!userProfile || !selectedComm) return;
-    if (!newPost.title || !newPost.content) return toast.error("يرجى كتابة عنوان ومحتوى");
+    if (!newPost.title || !newPost.content) return toast.error(lang === 'ar' ? "يرجى كتابة عنوان ومحتوى" : "Please write a title and content");
     try {
       await addCommunityPost(selectedComm.id, { ...newPost, authorId: userProfile.uid });
       setShowCreatePost(false);
       setNewPost({ title: '', content: '' });
-      toast.success("تم النشر بنجاح");
+      toast.success(lang === 'ar' ? "تم النشر بنجاح" : "Post shared successfully");
     } catch (err) {
-      toast.error("فشل في النشر");
+      toast.error(lang === 'ar' ? "فشل في النشر" : "Failed to publish post");
     }
   };
 
@@ -1782,7 +1866,7 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
       await toggleLikePost(selectedComm.id, post.id, userProfile.uid, !currentlyLiked);
       setLikedPosts(prev => ({ ...prev, [post.id]: !currentlyLiked }));
     } catch (err) {
-      toast.error("خطأ في التفاعل");
+      toast.error(lang === 'ar' ? "خطأ في التفاعل" : "Error toggling like");
     }
   };
 
@@ -1797,9 +1881,9 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
       });
       setCommentText("");
       setCommentingOn(null);
-      toast.success("تم إضافة التعليق");
+      toast.success(lang === 'ar' ? "تم إضافة التعليق" : "Comment added successfully");
     } catch (err) {
-      toast.error("فشل التعليق");
+      toast.error(lang === 'ar' ? "فشل التعليق" : "Failed to add comment");
     }
   };
 
@@ -1817,29 +1901,39 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
 
   if (selectedComm) {
     return (
-      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8 pb-24">
-        <header className="flex items-center justify-between gap-6">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setSelectedComm(null)} className="p-4 bg-white border border-stone-100 rounded-3xl shadow-sm text-stone-900 transition-transform active:scale-90"><ChevronLeft size={24} /></button>
-            <div>
-              <h2 className="text-3xl font-black text-stone-900 tracking-tighter">{selectedComm.name}</h2>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="bg-brand-green/10 text-brand-green text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">{selectedComm.type}</span>
-                <span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">• {selectedComm.memberCount} Members</span>
+      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-10 pb-12" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <header className="flex items-center justify-between">
+           <div className="flex items-center gap-6">
+              <button 
+                onClick={() => setSelectedComm(null)} 
+                className="w-14 h-14 bg-white border-2 border-stone-50 rounded-[20px] flex items-center justify-center text-stone-900 shadow-sm active:scale-95"
+              >
+                <ChevronLeft size={24} className={lang === 'ar' ? 'rotate-180' : ''} />
+              </button>
+              <div>
+                <h2 className="text-3xl font-black text-stone-900 tracking-tighter">{selectedComm.name}</h2>
+                <div className="flex items-center gap-3">
+                   <span className="w-2 h-2 rounded-full bg-brand-green animate-pulse" />
+                   <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{selectedComm.memberCount} {lang === 'ar' ? 'عقل نشط' : 'active minds'}</span>
+                </div>
               </div>
-            </div>
-          </div>
-          <button 
-            onClick={() => setShowCreatePost(true)}
-            className="bg-stone-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl"
-          >
-            نشر موضوع جديد
-          </button>
+           </div>
+           {(userProfile?.role === 'expert' || userProfile?.role === 'engineer' || userProfile?.role === 'admin' || userProfile?.role === 'professional') && (
+             <button onClick={() => setShowCreatePost(true)} className="w-12 h-12 bg-stone-900 text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all">
+                <Plus size={20} />
+             </button>
+           )}
         </header>
 
         <div className="space-y-6">
-          {posts.length > 0 ? posts.map(post => (
-            <div key={post.id} className="bg-white p-10 rounded-[48px] border border-stone-100 shadow-sm space-y-6">
+           {posts.length > 0 ? posts.map((post, idx) => (
+             <motion.div 
+               initial={{ opacity: 0, y: 20 }} 
+               animate={{ opacity: 1, y: 0 }} 
+               transition={{ delay: idx * 0.1 }}
+               key={post.id} 
+               className="material-card p-8 space-y-6 bg-white border border-stone-50"
+             >
                <div className="flex items-center justify-between">
                  <div onClick={() => openProfile(post.authorId)} className="flex items-center gap-4 cursor-pointer group">
                     <img src={`https://picsum.photos/seed/${post.authorId}/100`} className="w-12 h-12 rounded-2xl shadow-md border-2 border-white group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />
@@ -1901,7 +1995,7 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
                     </div>
                  </motion.div>
                )}
-            </div>
+            </motion.div>
           )) : (
             <div className="text-center py-20 bg-white rounded-[40px] border border-stone-100 italic text-stone-400">No professional topics discussed yet.</div>
           )}
@@ -1946,31 +2040,33 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10 pb-24">
-       <header className="flex items-center justify-between">
-         <div>
-           <h2 className="text-4xl font-black text-stone-900 tracking-tighter">المجتمعات الزراعية</h2>
-           <p className="text-stone-400 font-bold uppercase tracking-widest text-[10px] mt-1">تواصل مع الخبراء والمهنيين في مجالك</p>
-         </div>
-         <button 
-          onClick={() => setShowCreateGroup(true)}
-          className="bg-brand-green text-white px-8 py-4 rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-brand-green/20 hover:scale-105 active:scale-95 transition-all group"
-         >
-           <Plus size={20} className="group-hover:rotate-90 transition-transform" /> إنشاء مجموعة
-         </button>
+       <header className="space-y-4">
+          <h2 className="text-5xl lg:text-7xl font-black text-stone-900 tracking-tighter">{lang === 'ar' ? 'مجتمعاتنا' : 'Social Hub'}</h2>
+          <div className="flex items-center gap-6">
+             <div className="w-12 h-0.5 bg-brand-green rounded-full" />
+             <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.4em]">{lang === 'ar' ? 'تبادل الخبرات مع المحترفين' : 'Connect x Share x Grow'}</p>
+          </div>
        </header>
 
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {communities.map(comm => (
-            <div key={comm.id} onClick={() => setSelectedComm(comm)} className="bg-white rounded-[56px] overflow-hidden border border-stone-100 shadow-sm group cursor-pointer hover:shadow-2xl hover:border-brand-green/30 transition-all flex flex-col h-full">
-               <div className="h-48 relative overflow-hidden bg-brand-green/5">
-                 <div className="absolute inset-0 flex items-center justify-center">
-                    {comm.type === 'crop' ? <Sprout size={80} className="text-brand-green/10 group-hover:scale-125 transition-transform duration-700" /> : comm.type === 'livestock' ? <Footprints size={80} className="text-brand-green/10 group-hover:scale-125 transition-transform duration-700" /> : <Users size={80} className="text-brand-green/10 group-hover:scale-125 transition-transform duration-700" />}
-                 </div>
-                 <div className="absolute top-8 left-8">
-                   <span className="bg-white/80 backdrop-blur-md text-stone-900 text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-stone-100 shadow-sm">{comm.type}</span>
-                 </div>
+       <div className="flex gap-8 overflow-x-auto no-scrollbar pb-10 pl-4 pr-4">
+          {userProfile?.role === 'admin' && (
+            <button 
+              onClick={() => setShowCreateGroup(true)}
+              className="min-w-[200px] aspect-[4/5] bg-stone-50 border-4 border-dashed border-stone-100 rounded-[48px] flex flex-col items-center justify-center gap-6 group hover:bg-stone-100 transition-all shadow-inner"
+            >
+               <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-stone-300 group-hover:scale-110 transition-transform shadow-sm">
+                 <Plus size={32} />
                </div>
-               <div className="p-10 space-y-4 flex-1 flex flex-col justify-between">
+               <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{lang === 'ar' ? 'إنشاء مجتمع' : 'Deploy Core'}</p>
+            </button>
+          )}
+          {communities.map((comm) => (
+            <button key={comm.id} onClick={() => setSelectedComm(comm)} className="min-w-[260px] lg:min-w-[300px] aspect-[4/5] material-card p-10 flex flex-col justify-between text-right group relative overflow-hidden bg-white border border-stone-50 shadow-sm">
+               <div className="absolute top-0 right-0 w-48 h-48 bg-stone-50/50 rounded-full -mr-24 -mt-24 group-hover:scale-150 transition-transform duration-1000 z-0" />
+               <div className="w-16 h-16 bg-stone-50 rounded-[22px] flex items-center justify-center text-stone-900 group-hover:bg-brand-green group-hover:text-white transition-all shadow-inner relative z-10">
+                  {comm.type === 'crop' ? <Sprout size={32} /> : comm.type === 'livestock' ? <Activity size={32} /> : <MessageSquare size={32} />}
+               </div>
+               <div className="space-y-4 relative z-10">
                  <div className="space-y-2">
                    <h3 className="text-2xl font-black text-stone-900 tracking-tight group-hover:text-brand-green transition-colors">{comm.name}</h3>
                    <p className="text-stone-500 font-medium line-clamp-3 text-sm leading-relaxed">{comm.description}</p>
@@ -1985,14 +2081,15 @@ const RenderCommunities = ({ openProfile, userProfile }: { openProfile: (uid: st
                     <button className="bg-stone-50 text-stone-900 p-3 rounded-2xl group-hover:bg-brand-green group-hover:text-white transition-all"><ChevronRight size={20} /></button>
                  </div>
                </div>
-            </div>
+            </button>
           ))}
-          {communities.length === 0 && [1,2].map(i => (
-             <div key={i} className="bg-white rounded-[56px] border-4 border-dashed border-stone-100 shadow-sm opacity-50 grayscale p-16 text-center space-y-6 flex flex-col items-center justify-center">
-                <Search size={64} className="text-stone-200" />
-                <p className="font-black text-stone-400 uppercase tracking-widest text-xs">لا يوجد مجموعات حالياً</p>
+          {communities.length === 0 && (
+             <div className="min-w-full flex items-center justify-center py-24 border-4 border-dashed border-stone-50 rounded-[56px] bg-stone-50/30">
+                <p className="text-stone-300 font-black uppercase tracking-[0.4em] text-xs leading-relaxed text-center">
+                   {lang === 'ar' ? 'لا توجد مجتمعات منشأة بعد' : 'Social landscape is quiet'}
+                </p>
              </div>
-          ))}
+          )}
        </div>
 
        {/* Create Group Modal */}
@@ -2237,7 +2334,7 @@ const PersonalPostCard: React.FC<{
   );
 };
 
-const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | null, onAddToCart: (p: Product) => void }) => {
+const RenderMarketplace = ({ profile, onAddToCart, lang }: { profile: UserProfile | null, onAddToCart: (p: Product) => void, lang: Language }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -2245,8 +2342,7 @@ const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | nu
   const [productImage, setProductImage] = useState<File | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const toast = useToast();
-  const { lang } = useAppContext();
-  const t = TRANSLATIONS[lang];
+  const t = TRANSLATIONS[lang] || TRANSLATIONS['ar'];
 
   useEffect(() => {
     const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(50));
@@ -2258,7 +2354,7 @@ const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | nu
 
   const handleAddProduct = async () => {
     if (!profile) return;
-    if (!newProduct.name || !newProduct.price) return toast.error("يرجى ملء الاسم والسعر");
+    if (!newProduct.name || !newProduct.price) return toast.error(lang === 'ar' ? "يرجى ملء الاسم والسعر" : "Please fill name and price");
     setIsAdding(true);
     try {
       let imageUrl = "";
@@ -2276,9 +2372,9 @@ const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | nu
       setShowAddForm(false);
       setNewProduct({ name: '', description: '', price: '', category: '' });
       setProductImage(null);
-      toast.success("تمت إضافة المنتج بنجاح");
+      toast.success(lang === 'ar' ? "تمت إضافة المنتج بنجاح" : "Product added successfully");
     } catch (err) {
-      toast.error("فشل إضافة المنتج");
+      toast.error(lang === 'ar' ? "فشل إضافة المنتج" : "Failed to add product");
     } finally {
       setIsAdding(false);
     }
@@ -2287,142 +2383,211 @@ const RenderMarketplace = ({ profile, onAddToCart }: { profile: UserProfile | nu
   const filteredProducts = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="space-y-8 pb-32">
-       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-             <h2 className="text-4xl font-black text-stone-900 tracking-tighter">{t.marketplace}</h2>
-             <p className="text-stone-500 font-medium tracking-wide">{lang === 'ar' ? 'اكتشف أفضل المستلزمات والمنتجات الفلاحية' : 'Discover the best agricultural supplies and products'}</p>
-          </div>
-          <div className="flex gap-3">
-             <div className="relative flex-1 md:w-80">
-                <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
-                <input 
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={lang === 'ar' ? 'ابحث عن بذور، معدات، أسمدة...' : 'Search for seeds, tools, fertilizers...'}
-                  className="w-full bg-white pr-12 pl-6 py-4 rounded-2xl border border-stone-100 shadow-sm focus:ring-2 ring-brand-green/20 outline-none font-bold"
-                />
+    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-10 pb-12" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+       {/* Marketplace Header */}
+       <header className="space-y-8">
+          <div className="flex items-center justify-between">
+             <div className="space-y-1">
+                <h2 className="text-4xl lg:text-6xl font-black text-stone-900 tracking-tighter">{t.marketplace}</h2>
+                <p className="text-stone-400 text-xs font-black uppercase tracking-[0.2em]">{lang === 'ar' ? 'تجهيزات فلاحية بمقاييس عالمية' : 'Premium Agri-Supplies'}</p>
              </div>
-             {(profile?.role === 'supplier' || profile?.role === 'engineer') && (
+             {(profile?.role === 'supplier' || profile?.role === 'engineer' || profile?.role === 'admin') && (
                <button 
                  onClick={() => setShowAddForm(true)}
-                 className="bg-brand-green text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-brand-green/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                 className="w-14 h-14 bg-stone-900 text-white rounded-2xl flex items-center justify-center shadow-material-high active:scale-90 transition-all hover:bg-brand-green"
                >
-                  <Plus size={20} /> {lang === 'ar' ? 'أضف منتج' : 'Add Product'}
+                 <Plus size={24} />
                </button>
              )}
           </div>
+
+          <div className="relative group">
+             <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none text-stone-400 group-focus-within:text-brand-green transition-colors">
+                <Search size={22} />
+             </div>
+             <input 
+               value={search}
+               onChange={(e) => setSearch(e.target.value)}
+               placeholder={lang === 'ar' ? 'تبحث عن بذور، معدات، أسمدة...' : 'Search supplies...'}
+               className="w-full bg-white pl-16 pr-8 py-6 rounded-[32px] border-2 border-stone-50 outline-none focus:border-brand-green shadow-sm transition-all font-black text-stone-700 placeholder:text-stone-300"
+             />
+          </div>
+       </header>
+
+       {/* Featured Categories (Optional Visual Polish) */}
+       <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+          {['All Products', 'Modern Tools', 'Hybrid Seeds', 'Eco Fertilizer'].map(cat => (
+            <button key={cat} className="px-8 py-3 bg-white border border-stone-100 rounded-full text-[10px] font-black uppercase tracking-widest text-stone-500 hover:bg-stone-900 hover:text-white transition-all whitespace-nowrap shadow-sm">
+              {cat}
+            </button>
+          ))}
        </div>
 
+       {/* Add Product Drawer */}
        <AnimatePresence>
          {showAddForm && (
-           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-xl space-y-6 relative">
-              <button onClick={() => setShowAddForm(false)} className="absolute top-6 left-6 text-stone-300 hover:text-stone-600"><X size={24} /></button>
-              <h3 className="text-xl font-black text-stone-900 mb-2">{lang === 'ar' ? 'إضافة منتج جديد للسوق' : 'Add New Product to Marketplace'}</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-4">
-                    <input 
-                      placeholder={lang === 'ar' ? 'اسم المنتج' : 'Product Name'}
-                      value={newProduct.name}
-                      onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                      className="w-full p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
-                    />
-                    <div className="flex gap-4">
-                       <input 
-                         placeholder={lang === 'ar' ? 'السعر (DA)' : 'Price (DA)'}
-                         type="number"
-                         value={newProduct.price}
-                         onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
-                         className="flex-1 p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
-                       />
-                       <select 
-                         value={newProduct.category}
-                         onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
-                         className="flex-1 p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-bold"
-                       >
-                         <option value="">{lang === 'ar' ? 'الفئة' : 'Category'}</option>
-                         <option value="seeds">{lang === 'ar' ? 'بذور' : 'Seeds'}</option>
-                         <option value="tools">{lang === 'ar' ? 'معدات' : 'Tools'}</option>
-                         <option value="fertilizer">{lang === 'ar' ? 'أسمدة' : 'Fertilizer'}</option>
-                         <option value="livestock">{lang === 'ar' ? 'مواشي' : 'Livestock'}</option>
-                       </select>
-                    </div>
-                    <textarea 
-                      placeholder={lang === 'ar' ? 'وصف المنتج...' : 'Product description...'}
-                      value={newProduct.description}
-                      onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
-                      rows={3}
-                      className="w-full p-4 bg-stone-50 rounded-2xl outline-none focus:ring-2 ring-brand-green/20 font-medium resize-none"
-                    />
-                 </div>
+           <motion.div 
+             initial={{ opacity: 0, y: 100 }} 
+             animate={{ opacity: 1, y: 0 }} 
+             exit={{ opacity: 0, y: 100 }} 
+             className="fixed inset-0 z-[100] bg-stone-900/40 backdrop-blur-md flex items-end lg:items-center justify-center p-4"
+           >
+              <div className="bg-white w-full max-w-2xl rounded-[48px] p-10 lg:p-14 shadow-material-high relative overflow-hidden">
+                 <button onClick={() => setShowAddForm(false)} className="absolute top-8 right-8 p-3 bg-stone-100 rounded-2xl text-stone-400 hover:text-stone-600 transition-all z-10"><X size={24} /></button>
                  
-                 <div className="flex flex-col gap-4">
-                    <div className="flex-1 border-2 border-dashed border-stone-100 rounded-[32px] flex flex-col items-center justify-center p-6 bg-stone-50/50 hover:bg-stone-50 transition-colors cursor-pointer group relative overflow-hidden" onClick={() => document.getElementById('product-img')?.click()}>
-                       <input id="product-img" type="file" hidden accept="image/*" onChange={(e) => setProductImage(e.target.files?.[0] || null)} />
-                       {productImage ? (
-                         <img src={URL.createObjectURL(productImage)} className="absolute inset-0 w-full h-full object-cover" />
-                       ) : (
-                         <>
-                           <Image size={40} className="text-stone-300 mb-2 group-hover:scale-110 transition-transform" />
-                           <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{lang === 'ar' ? 'رفع صورة المنتج' : 'Upload Product Image'}</p>
-                         </>
-                       )}
+                 <div className="space-y-10">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl font-black text-stone-900 tracking-tight">{lang === 'ar' ? 'إضافة منتج للسوق' : 'List Product'}</h3>
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Global Marketplace Standard</p>
                     </div>
-                    <button 
-                      onClick={handleAddProduct}
-                      disabled={isAdding}
-                      className="w-full bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl"
-                    >
-                       {isAdding ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Check size={20} /> {lang === 'ar' ? 'نشر في السوق' : 'Publish to Marketplace'}</>}
-                    </button>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className="space-y-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-stone-400 uppercase ml-4">Product Identity</label>
+                            <input 
+                              placeholder={lang === 'ar' ? 'مثال: محراث آلي متطور' : 'e.g. Smart Plow'}
+                              value={newProduct.name}
+                              onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                              className="w-full p-6 bg-stone-50 rounded-[24px] outline-none focus:ring-4 ring-brand-green/10 font-bold border-2 border-transparent focus:border-stone-100 transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-1.5">
+                               <label className="text-[10px] font-black text-stone-400 uppercase ml-4">Price (DA)</label>
+                               <input 
+                                 type="number"
+                                 value={newProduct.price}
+                                 onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                                 className="w-full p-6 bg-stone-50 rounded-[24px] outline-none font-bold focus:ring-4 ring-brand-green/10 transition-all"
+                               />
+                             </div>
+                             <div className="space-y-1.5">
+                               <label className="text-[10px] font-black text-stone-400 uppercase ml-4">Section</label>
+                               <select 
+                                 value={newProduct.category}
+                                 onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
+                                 className="w-full p-6 bg-stone-50 rounded-[24px] outline-none font-black text-[10px] uppercase tracking-widest focus:ring-4 ring-brand-green/10 appearance-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNIDYgOSBMIDEyIDE1IEwgMTggOSIgc3Ryb2tlPSIjOTA5MDkwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==')] bg-no-repeat bg-[right_1.5rem_center]"
+                               >
+                                 <option value="">Choose</option>
+                                 <option value="seeds">Seeds</option>
+                                 <option value="tools">Hardware</option>
+                                 <option value="fertilizer">Biotech</option>
+                                 <option value="livestock">Livestock</option>
+                               </select>
+                             </div>
+                          </div>
+                          
+                          <textarea 
+                            placeholder={lang === 'ar' ? 'أدخل تفاصيل تقنية ومميزات...' : 'Technical specs and features...'}
+                            value={newProduct.description}
+                            onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                            rows={3}
+                            className="w-full p-6 bg-stone-50 rounded-[24px] outline-none font-medium resize-none focus:ring-4 ring-brand-green/10 transition-all"
+                          />
+                       </div>
+                       
+                       <div className="flex flex-col gap-6">
+                          <div 
+                            className="flex-1 border-4 border-dashed border-stone-50 rounded-[40px] flex flex-col items-center justify-center p-8 bg-stone-50/30 hover:bg-stone-50 transition-all cursor-pointer group relative overflow-hidden shadow-inner" 
+                            onClick={() => document.getElementById('product-img')?.click()}
+                          >
+                             <input id="product-img" type="file" hidden accept="image/*" onChange={(e) => setProductImage(e.target.files?.[0] || null)} />
+                             {productImage ? (
+                               <motion.img initial={{ opacity: 0 }} animate={{ opacity: 1 }} src={URL.createObjectURL(productImage)} className="absolute inset-0 w-full h-full object-cover" />
+                             ) : (
+                               <div className="flex flex-col items-center gap-3">
+                                 <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                   <Image size={32} className="text-stone-300" />
+                                 </div>
+                                 <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.2em]">Visual Input</p>
+                               </div>
+                             )}
+                          </div>
+                          
+                          <button 
+                            onClick={handleAddProduct}
+                            disabled={isAdding}
+                            className="w-full h-20 bg-stone-900 text-white rounded-[32px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-4 shadow-material-high active:scale-95 transition-all disabled:opacity-50"
+                          >
+                             {isAdding ? <div className="w-6 h-6 border-4 border-white/20 border-t-white rounded-full animate-spin" /> : (lang === 'ar' ? 'نشر في المنصة' : 'Deploy Product')}
+                          </button>
+                       </div>
+                    </div>
                  </div>
               </div>
            </motion.div>
          )}
        </AnimatePresence>
 
-       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map(product => (
-            <motion.div layout id={`product-${product.id}`} key={product.id} className="bg-white p-6 rounded-[40px] border border-stone-100 shadow-sm hover:shadow-xl hover:scale-[1.02] transition-all group flex flex-col h-full uppercase tracking-tighter">
-               <div className="h-56 bg-stone-50 rounded-[32px] mb-6 overflow-hidden relative">
-                  <img src={product.imageUrl || "https://picsum.photos/seed/product/400"} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl text-stone-900 font-black text-xs shadow-sm">
+       {/* Product Grid */}
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {filteredProducts.map((product, idx) => (
+            <motion.div 
+              layout 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              key={product.id} 
+              className="material-card p-4 group flex flex-col h-full bg-white"
+            >
+               <div className="h-72 lg:h-80 bg-stone-100 rounded-[40px] mb-6 overflow-hidden relative">
+                  <img 
+                    src={product.imageUrl || `https://picsum.photos/seed/${product.id}/600`} 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
+                    referrerPolicy="no-referrer" 
+                  />
+                  <div className="absolute top-6 right-6 px-5 py-2.5 bg-white shadow-material-mid rounded-2xl text-stone-900 font-black text-sm border-2 border-stone-50">
                     {product.price} DA
                   </div>
+                  <div className="absolute bottom-6 left-6 px-4 py-2 bg-stone-900/60 backdrop-blur-md rounded-xl text-white text-[9px] font-black uppercase tracking-widest border border-white/10">
+                    {product.category || 'Agri-Tech'}
+                  </div>
                </div>
-               <div className="flex-1 space-y-2 text-right">
-                  <span className="text-[10px] font-black text-brand-green/60 uppercase tracking-[0.2em]">{product.category || (lang === 'ar' ? 'عام' : 'General')}</span>
-                  <h4 className="text-xl font-black text-stone-900 leading-tight">{product.name}</h4>
-                  <p className="text-stone-500 text-sm font-medium line-clamp-2 leading-relaxed">{product.description}</p>
+
+               <div className="flex-1 px-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xl font-black text-stone-900 leading-tight">{product.name}</h4>
+                    <div className="w-2 h-2 rounded-full bg-brand-green shadow-[0_0_10px_rgba(46,204,113,0.5)]" />
+                  </div>
+                  <p className="text-stone-400 text-[11px] font-medium line-clamp-2 leading-relaxed italic opacity-85">"{product.description}"</p>
                </div>
-               <button 
-                 onClick={() => onAddToCart(product)}
-                 className="mt-6 w-full bg-stone-50 text-stone-900 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-green hover:text-white transition-all flex items-center justify-center gap-3"
-               >
-                  <ShoppingBag size={18} /> {t.addToCart}
-               </button>
+
+               <div className="mt-8 px-4 pb-4">
+                  <button 
+                    onClick={() => onAddToCart(product)}
+                    className="w-full h-16 bg-stone-50 text-stone-400 rounded-[24px] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-brand-green hover:text-white transition-all flex items-center justify-center gap-4 border-2 border-transparent active:scale-95"
+                  >
+                     <ShoppingBag size={20} />
+                     {t.addToCart}
+                  </button>
+               </div>
             </motion.div>
           ))}
+
           {filteredProducts.length === 0 && (
-            <div className="col-span-full py-40 text-center space-y-4">
-               <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center mx-auto text-stone-300">
-                  <Search size={40} />
+            <div className="col-span-full py-40 flex flex-col items-center gap-6">
+               <div className="w-32 h-32 bg-stone-50 rounded-[48px] flex items-center justify-center text-stone-100">
+                  <PackageSearch size={64} />
                </div>
-               <p className="text-stone-400 font-black uppercase tracking-widest text-[10px]">{lang === 'ar' ? 'لم يتم العثور على أي منتجات' : 'No products found'}</p>
+               <div className="text-center space-y-1">
+                 <p className="text-stone-900 font-black text-lg">No Results In Inventory</p>
+                 <p className="text-stone-400 font-black uppercase tracking-[0.3em] text-[10px]">Try dynamic search parameters</p>
+               </div>
+               <button onClick={() => setSearch('')} className="mt-4 px-10 py-4 bg-stone-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">Reset Filter</button>
             </div>
           )}
        </div>
-    </div>
+    </motion.div>
   );
 };
 
-const CartModal = ({ cart, onClose, onUpdateQuantity, onCheckout }: { cart: CartItem[], onClose: () => void, onUpdateQuantity: (pid: string, q: number) => void, onCheckout: (address: string) => Promise<void> }) => {
+const CartModal = ({ cart, onClose, onUpdateQuantity, onCheckout, lang }: { cart: CartItem[], onClose: () => void, onUpdateQuantity: (pid: string, q: number) => void, onCheckout: (address: string) => Promise<void>, lang: Language }) => {
   const [address, setAddress] = useState("");
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const total = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const toast = useToast();
-  const { lang } = useAppContext();
   const t = TRANSLATIONS[lang];
 
   const handleCheckout = async () => {
@@ -3698,29 +3863,29 @@ const AIChat = ({ lang, onClose, weather }: { lang: Language, onClose: () => voi
       className="fixed inset-0 bg-white z-[60] flex flex-col font-sans"
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
-      <header className="p-8 border-b flex items-center justify-between bg-stone-900 text-white shadow-xl">
-        <div className="flex items-center gap-5">
-          <div className="w-14 h-14 bg-brand-green/20 rounded-[20px] flex items-center justify-center border-2 border-brand-green/30">
-            <Bot size={32} className="text-brand-green" />
+      <header className="p-4 lg:p-8 border-b flex items-center justify-between bg-stone-900 text-white shadow-xl">
+        <div className="flex items-center gap-3 lg:gap-5">
+          <div className="w-10 h-10 lg:w-14 lg:h-14 bg-brand-green/20 rounded-[15px] lg:rounded-[20px] flex items-center justify-center border-2 border-brand-green/30">
+            <Bot size={24} className="text-brand-green" />
           </div>
           <div>
-            <h3 className="font-black text-xl uppercase tracking-tighter">AgroLife Assistant</h3>
+            <h3 className="font-black text-sm lg:text-xl uppercase tracking-tighter">AgroLife Assistant</h3>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] text-stone-400 font-black uppercase tracking-widest">System Operational</span>
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[8px] lg:text-[10px] text-stone-400 font-black uppercase tracking-widest">System Operational</span>
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors"><LogOut size={24} className="rotate-90 text-stone-400" /></button>
+        <button onClick={onClose} className="p-3 lg:p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors"><LogOut size={20} className="rotate-90 text-stone-400 lg:scale-110" /></button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-stone-50">
+      <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6 lg:space-y-8 bg-stone-50">
         {messages.map((m, i) => (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-6 rounded-[32px] text-base shadow-2xl leading-relaxed space-y-4 ${
+            <div className={`max-w-[90%] lg:max-w-[85%] p-4 lg:p-6 rounded-[24px] lg:rounded-[32px] text-sm lg:text-base shadow-2xl leading-relaxed space-y-4 ${
               m.role === 'user' ? 'bg-stone-900 text-white rounded-tr-none' : 'bg-white text-stone-700 rounded-tl-none border border-stone-100 shadow-stone-950/5'
             }`}>
-              {m.image && <img src={m.image} className="w-full max-h-60 object-cover rounded-2xl mb-2" referrerPolicy="no-referrer" />}
+              {m.image && <img src={m.image} className="w-full max-h-48 lg:max-h-60 object-cover rounded-2xl mb-2" referrerPolicy="no-referrer" />}
               {m.audio && <audio src={m.audio} controls className="w-full h-8 filter saturate-0 invert brightness-50" />}
               <p>{m.text}</p>
             </div>
@@ -3728,7 +3893,7 @@ const AIChat = ({ lang, onClose, weather }: { lang: Language, onClose: () => voi
         ))}
         {loading && (
           <div className="flex justify-start">
-             <div className="bg-white p-6 rounded-[32px] shadow-sm animate-pulse flex gap-2">
+             <div className="bg-white p-4 lg:p-6 rounded-[32px] shadow-sm animate-pulse flex gap-2">
                <div className="w-2 h-2 bg-brand-green rounded-full animate-bounce" />
                <div className="w-2 h-2 bg-brand-green rounded-full animate-bounce delay-75" />
                <div className="w-2 h-2 bg-brand-green rounded-full animate-bounce delay-150" />
@@ -3737,32 +3902,33 @@ const AIChat = ({ lang, onClose, weather }: { lang: Language, onClose: () => voi
         )}
       </div>
 
-      <div className="p-8 bg-white border-t-2 border-stone-50 space-y-4">
+      <div className="p-4 lg:p-8 bg-white border-t-2 border-stone-50 space-y-4">
         {imagePreview && (
           <div className="relative inline-block">
-            <img src={imagePreview} className="w-24 h-24 object-cover rounded-2xl border-4 border-stone-100 shadow-md" />
+            <img src={imagePreview} className="w-20 h-20 lg:w-24 lg:h-24 object-cover rounded-2xl border-4 border-stone-100 shadow-md" />
             <button onClick={() => { setSelectedImage(null); setImagePreview(null); }} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"><X size={14} /></button>
           </div>
         )}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-2 lg:gap-4 items-center">
           {isRecording ? (
-            <button onClick={stopRecording} className="p-6 bg-red-50 text-red-500 rounded-[28px] animate-pulse shadow-lg"><Activity size={28} /></button>
+            <button onClick={stopRecording} className="p-4 lg:p-6 bg-red-50 text-red-500 rounded-[20px] lg:rounded-[28px] animate-pulse shadow-lg"><Activity size={24} /></button>
           ) : (
-            <button onClick={startRecording} className="p-6 bg-stone-50 rounded-[28px] text-stone-400 hover:text-brand-green transition-all shadow-sm"><Mic size={28} /></button>
+            <button onClick={startRecording} className="p-4 lg:p-6 bg-stone-50 rounded-[20px] lg:rounded-[28px] text-stone-400 hover:text-brand-green transition-all shadow-sm"><Mic size={24} /></button>
           )}
 
-          <label className="cursor-pointer p-6 bg-stone-50 border-2 border-stone-100 rounded-[28px] text-stone-400 hover:text-brand-green transition-all shadow-sm">
-            <Image size={28} />
+          <label className="cursor-pointer p-4 lg:p-6 bg-stone-50 border-2 border-stone-100 rounded-[20px] lg:rounded-[28px] text-stone-400 hover:text-brand-green transition-all shadow-sm">
+            <Image size={24} />
             <input type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
           </label>
           <input 
             value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder={lang === 'ar' ? "اسأل AgroLife AI عبر النص أو الصوت..." : "Ask AgroLife AI via text or voice..."} 
-            className="flex-1 p-6 bg-stone-50 border-2 border-stone-100 rounded-[28px] outline-none focus:border-brand-green text-sm font-bold shadow-inner" 
+            placeholder={lang === 'ar' ? "اسأل AI..." : "Ask AI..."} 
+            className="flex-1 p-4 lg:p-6 bg-stone-50 border-2 border-stone-100 rounded-[20px] lg:rounded-[28px] outline-none focus:border-brand-green text-sm font-bold shadow-inner" 
           />
-          <button onClick={() => sendMessage()} disabled={loading} className="bg-brand-green text-white p-6 rounded-[28px] shadow-2xl shadow-brand-green/30 disabled:opacity-50 active:scale-95 transition-all">
-            <Send size={28} />
+          <button onClick={() => sendMessage()} disabled={loading} className="bg-brand-green text-white px-6 lg:px-10 py-4 lg:p-6 rounded-[20px] lg:rounded-[28px] shadow-2xl disabled:opacity-50 active:scale-95 transition-all flex items-center gap-2 group">
+            <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'ar' ? 'إرسال' : 'Send'}</span>
+            <Send size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </button>
         </div>
       </div>
@@ -3802,7 +3968,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {step === "splash" && <Splash key="splash" onComplete={() => setStep("lang")} />}
           {step === "lang" && <LanguageSelector key="lang" onSelect={(l) => { setLang(l); setStep("auth"); }} />}
-          {step === "auth" && <Auth key="auth" lang={lang} onAuth={() => setStep("dashboard")} />}
+          {step === "auth" && <Auth key="auth" lang={lang} onAuth={() => setStep("dashboard")} onBack={() => setStep("lang")} />}
           {step === "dashboard" && <Dashboard key="dashboard" lang={lang} profile={profile} onLogout={handleLogout} />}
         </AnimatePresence>
       </div>

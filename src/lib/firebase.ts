@@ -41,8 +41,21 @@ export const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error: any) {
-    if (error.code === 'auth/popup-closed-by-user') {
-      console.warn("User closed the login popup.");
+    const errString = JSON.stringify(error) || "";
+    const errorCode = error?.code || "";
+    const errorMessage = error?.message || "";
+    
+    const isCancelled = 
+      errorCode.includes('cancelled-popup-request') || 
+      errorCode.includes('popup-closed-by-user') ||
+      errorCode.includes('popup-blocked') ||
+      errorMessage.includes('cancelled-popup-request') ||
+      errorMessage.includes('popup-closed-by-user') ||
+      errorMessage.includes('popup-blocked') ||
+      errString.includes('cancelled-popup-request');
+
+    if (isCancelled) {
+      console.warn("Google authentication popup cancelled, closed, or blocked.");
       return null;
     }
     console.error("Google Sign-In Error:", error);
@@ -67,7 +80,7 @@ export interface UserProfile {
   searchKeywords?: string[];
   email: string | null;
   photoURL: string | null;
-  role: 'farmer' | 'veterinarian' | 'engineer' | 'supplier' | 'admin' | 'trader';
+  role: 'farmer' | 'veterinarian' | 'engineer' | 'supplier' | 'admin' | 'trader' | 'expert' | 'professional';
   professionalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   bio?: string;
   specialization?: string;
